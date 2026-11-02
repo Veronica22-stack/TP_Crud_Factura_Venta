@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Facturas de Venta</title>
+  <link rel="stylesheet" href="./src/style.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header principal -->
+    <header class="header">
+      <h1 class="title">Facturas de Venta</h1>
+      <button id="btnNuevaFactura" class="btn btn-primary btn-nueva">Nueva Factura</button>
+    </header>
+
+    <!-- Card de Filtros -->
+    <section class="card filtros-card">
+      <h2 class="card-title">Filtros</h2>
+      <form id="filtrosForm" class="filtros-grid">
+        <div class="form-group">
+          <label for="filtroNumero">Número de Factura</label>
+          <input type="number" id="filtroNumero" class="form-control" placeholder="Ej: 1001">
+        </div>
+
+        <div class="form-group cliente-group">
+          <label for="filtroCliente">Cliente</label>
+          <div class="input-with-button">
+            <input type="text" id="filtroCliente" class="form-control" placeholder="Nombre del cliente">
+            <button type="button" id="btnAbrirExplorer" class="btn btn-secondary btn-icon" title="Abrir explorador de clientes">
+               Explorar
+            </button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="filtroCondicionIva">Condición IVA</label>
+          <select id="filtroCondicionIva" class="form-control">
+            <option value="">Todas</option>
+            <option value="IVA Responsable Inscripto">IVA Responsable Inscripto</option>
+            <option value="Monotributo">Monotributo</option>
+            <option value="Consumidor Final">Consumidor Final</option>
+            <option value="IVA Sujeto Exento">IVA Sujeto Exento</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="filtroEstado">Estado</label>
+          <select id="filtroEstado" class="form-control">
+            <option value="">Todos los estados</option>
+            <option value="EMITIDA">Emitida</option>
+            <option value="ANULADA">Anulada</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="filtroFechaDesde">Fecha Desde</label>
+          <input type="date" id="filtroFechaDesde" class="form-control">
+        </div>
+
+        <div class="form-group">
+          <label for="filtroFechaHasta">Fecha Hasta</label>
+          <input type="date" id="filtroFechaHasta" class="form-control">
+        </div>
+      </form>
+
+      <div class="filtros-actions">
+        <button type="button" id="btnBuscar" class="btn btn-primary">Buscar</button>
+        <button type="button" id="btnLimpiar" class="btn btn-outline">Limpiar</button>
+        
+        <div class="export-actions">
+          <a id="btnExportPdf" href="#" target="_blank" class="btn btn-export btn-pdf">Exportar PDF</a>
+          <a id="btnExportExcel" href="#" target="_blank" class="btn btn-export btn-excel">Exportar Excel</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Grilla de Facturas -->
+    <section class="table-container">
+      <table class="facturas-table">
+        <thead>
+          <tr>
+            <th>Número</th>
+            <th>Fecha</th>
+            <th>Cliente</th>
+            <th>Condición IVA</th>
+            <th>Punto de Venta</th>
+            <th>Importe Total</th>
+            <th>Items</th>
+            <th>Estado</th>
+            <th class="text-center">Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="facturasTableBody">
+        </tbody>
+      </table>
+
+      <!-- Barra de paginación -->
+      <div class="pagination-bar">
+        <div class="pagination-info" id="paginationInfo">
+          Cargando facturas...
+        </div>
+        <div class="pagination-controls">
+          <button id="btnPrevPage" class="btn btn-page" disabled>‹ Anterior</button>
+          <span id="pageNumbers" class="page-numbers"></span>
+          <button id="btnNextPage" class="btn btn-page" disabled>Siguiente ›</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Modal: Explorador de Clientes -->
+  <div id="modalClientes" class="modal-overlay hidden">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 class="modal-title">Explorador de Clientes</h3>
+        <button id="btnCerrarModal" class="btn-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-search">
+          <input type="text" id="inputBuscarCliente" class="form-control" placeholder="Buscar por nombre o CUIT en tiempo real...">
+        </div>
+        <div class="modal-table-container">
+          <table class="clientes-table">
+            <thead>
+              <tr>
+                <th>CUIT / CUIL</th>
+                <th>Denominación / Razón Social</th>
+                <th>Email</th>
+                <th>Teléfono</th>
+                <th>Acción</th>
+              </tr>
+            </thead>
+            <tbody id="clientesTableBody">
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./src/main.ts"></script>
+</body>
+</html>

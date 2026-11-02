@@ -1,0 +1,4 @@
+http://localhost:8080/api/facturas/export/excel
+http://localhost:8080/api/facturas/export/pdf
+para el json
+http://localhost:8080/api/facturas
