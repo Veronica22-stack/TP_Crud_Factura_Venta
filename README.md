@@ -55,9 +55,9 @@ La aplicación web estará disponible en `http://localhost:3000`.
 ## Funcionalidades
 - Listado de facturas con filtros por número, cliente, condición de IVA, estado y rango de fechas.
 - Paginación dinámica del listado.
-- Alta de nueva factura con cálculo automático de subtotales y total.
+- Alta de nueva factura con cálculo automático de subtotales y total, filtrando los productos que se pueden agregar según la lista de precio seleccionada.
+- Obtención del CAE de ARCA desde el listado.
 - Edición y anulación de facturas existentes.
 - Eliminación de facturas que no tienen CAE.
-- Obtención del CAE de ARCA desde el listado.
 - Impresión de la factura en PDF (solo con CAE).
 - Exportación del listado a PDF y Excel.
