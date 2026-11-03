@@ -1,13 +1,13 @@
 # Sistema de Facturación de Venta
 
-Proyecto para la gestión de facturas de venta, con obtención de **CAE** de AFIP/ARCA (ambiente de **homologación**, solo pruebas).
+Proyecto para la gestión de facturas de venta, con obtención de **CAE** de ARCA (ambiente de **homologación**, solo pruebas).
 Backend en Spring Boot (Java 17) y frontend en HTML, CSS y TypeScript con Vite.
 
 ## Requisitos
 - Java 17 o superior
 - MySQL Server 8.0
 - Node.js y npm
-- Certificado de homologación de AFIP (clave privada `.key` y certificado `.crt`) con el servicio `wsfe` autorizado
+- Certificado de homologación de ARCA (clave privada `.key` y certificado `.crt`) con el servicio `wsfe` autorizado
 
 ## Ejecución
 
@@ -32,7 +32,7 @@ afip.concepto=1
 afip.alicuota.iva=21.0
 ```
 
-### 2. Credenciales de AFIP
+### 2. Credenciales de ARCA
 Colocar la clave y el certificado en `backend/src/main/resources/afip/` con los nombres de `afip.key.path` y `afip.cert.path`.
 Los archivos `.key`, `.crt`, `.pfx`, `.p12` y `ticket-*.properties` están en el `.gitignore`. La Clave Fiscal no está guardada en ningún archivo del proyecto.
 
@@ -58,6 +58,6 @@ La aplicación web estará disponible en `http://localhost:3000`.
 - Alta de nueva factura con cálculo automático de subtotales y total.
 - Edición y anulación de facturas existentes.
 - Eliminación de facturas que no tienen CAE.
-- Obtención del CAE de AFIP desde el listado.
+- Obtención del CAE de ARCA desde el listado.
 - Impresión de la factura en PDF (solo con CAE).
 - Exportación del listado a PDF y Excel.
