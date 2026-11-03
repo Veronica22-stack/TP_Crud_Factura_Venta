@@ -7,7 +7,7 @@ Backend en Spring Boot (Java 17) y frontend en HTML, CSS y TypeScript con Vite.
 - Java 17 o superior
 - MySQL Server 8.0
 - Node.js y npm
-- - Certificado de homologación de AFIP (clave privada `.key` y certificado `.crt`) con el servicio `wsfe` autorizado
+- Certificado de homologación de AFIP (clave privada `.key` y certificado `.crt`) con el servicio `wsfe` autorizado
 
 ## Ejecución
 
