@@ -12,7 +12,7 @@ Backend en Spring Boot (Java 17) y frontend en HTML, CSS y TypeScript con Vite.
 ## Ejecución
 
 ### 1. Configuración
-Este archivo **no está en el repositorio** (tiene contraseñas). Crear `backend/src/main/resources/application.properties` con este contenido:
+Este archivo **no está en el repositorio** (se decidió así porque tiene contraseñas). Crear `backend/src/main/resources/application.properties` con este contenido:
 ```properties
 spring.datasource.url=jdbc:mysql://localhost:3306/facturacion_db
 spring.datasource.username=TU_USUARIO
@@ -34,7 +34,7 @@ afip.alicuota.iva=21.0
 
 ### 2. Credenciales de AFIP
 Colocar la clave y el certificado en `backend/src/main/resources/afip/` con los nombres de `afip.key.path` y `afip.cert.path`.
-Los archivos `.key`, `.crt`, `.pfx`, `.p12` y `ticket-*.properties` están en el `.gitignore` y **nunca deben subirse**. La Clave Fiscal no se guarda en ningún archivo del proyecto.
+Los archivos `.key`, `.crt`, `.pfx`, `.p12` y `ticket-*.properties` están en el `.gitignore`. La Clave Fiscal no está guardada en ningún archivo del proyecto.
 
 ### 3. Backend
 ```bash
