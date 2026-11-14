@@ -2,7 +2,8 @@
 
 Proyecto para la gestión de facturas de venta, con obtención de **CAE** de ARCA (ambiente de **homologación**, solo pruebas).
 Backend en Spring Boot (Java 17) y frontend en HTML, CSS y TypeScript con Vite.
-
+## Nota
+En el proyecto no se encuentran las credenciales de acceso a ARCA por seguridad
 ## Requisitos
 - Java 17 o superior
 - MySQL Server 8.0
