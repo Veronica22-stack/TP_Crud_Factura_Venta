@@ -13,25 +13,7 @@ En el proyecto no se encuentran las credenciales de acceso a ARCA por seguridad
 ## Ejecución
 
 ### 1. Configuración
-Este archivo **no está en el repositorio** (se decidió así porque tiene contraseñas). Crear `backend/src/main/resources/application.properties` con este contenido:
-```properties
-spring.datasource.url=jdbc:mysql://localhost:3306/facturacion_db
-spring.datasource.username=TU_USUARIO
-spring.datasource.password=TU_CONTRASEÑA
-spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
-spring.jpa.hibernate.ddl-auto=update
-
-afip.cuit=TU_CUIT
-afip.service=wsfe
-afip.produccion=false
-afip.key.path=src/main/resources/afip/privada_homo.key
-afip.cert.path=src/main/resources/afip/certificado_homo.crt
-afip.wsaa.url=https://wsaahomo.afip.gov.ar/ws/services/LoginCms
-afip.wsfe.url=https://wswhomo.afip.gov.ar/wsfev1/service.asmx
-afip.cbte.tipo=11
-afip.concepto=1
-afip.alicuota.iva=21.0
-```
+El archivo `backend/src/main/resources/application.properties` ya está incluido en el repositorio con valores de ejemplo. Antes de ejecutar, editarlo con el usuario y contraseña de MySQL (`spring.datasource.username` y `spring.datasource.password`) y con el CUIT (`afip.cuit`). 
 
 ### 2. Credenciales de ARCA
 Colocar la clave y el certificado en `backend/src/main/resources/afip/` con los nombres de `afip.key.path` y `afip.cert.path`.
