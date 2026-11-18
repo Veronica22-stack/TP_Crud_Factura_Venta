@@ -1,6 +1,8 @@
 export interface FacturaDetalleReporteDTO {
   id?: number;
   articuloId?: number;
+  listaPrecioArticuloId?: number;
+  listaPrecioId?: number;
   productoDescripcion: string;
   cantidad: number;
   precioUnitario: number;
@@ -11,6 +13,7 @@ export interface FacturaReporteDTO {
   id?: number;
   numeroFactura: number;
   fechaEmision: string;
+  clienteId?: number;
   clienteDenominacion: string;
   condicionIva: string;
   puntoVentaDescripcion: string;
@@ -68,6 +71,7 @@ export interface FacturaFiltrosDTO {
   estado?: string;
   montoMinimo?: number;
   listaPrecioId?: number;
+  orden?: string;
   page?: number;
   size?: number;
 }
@@ -75,7 +79,10 @@ export interface FacturaFiltrosDTO {
 export interface FacturaVentaDetalleDTO {
   id?: number;
   articuloId?: number;
+  codigo?: string;
   rubro?: string;
+  listaPrecioId?: number;          // lista de precios de este ítem
+  listaPrecioArticuloId?: number;  // precio elegido dentro de esa lista
   productoDescripcion: string;
   cantidad: number;
   precioUnitario: number;
@@ -104,17 +111,8 @@ export interface ItemComboDTO {
   descripcion: string;
 }
 
-export interface ArticuloComboDTO {
-  id: number;
-  listaPrecioArticuloId: number;
-  codigo: string;
-  denominacion: string;
-  precioVenta: number;
-}
-
 export interface OpcionesComboDTO {
   puntosVenta: ItemComboDTO[];
   condicionesIva: ItemComboDTO[];
   clientes: ItemComboDTO[];
-  articulos: ArticuloComboDTO[];
 }

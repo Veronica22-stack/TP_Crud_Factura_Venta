@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Registrarse - Facturas de Venta</title>
+  <link rel="stylesheet" href="./src/style.css">
+</head>
+<body class="login-body">
+  <div class="login-card card">
+    <h1 class="title login-title">Crear usuario</h1>
+    <p class="login-subtitulo">Completá tus datos para registrarte</p>
+
+    <form id="registroForm" class="login-form">
+      <div class="form-group">
+        <label for="registroNombre">Nombre</label>
+        <input type="text" id="registroNombre" class="form-control" autocomplete="given-name" required>
+      </div>
+
+      <div class="form-group">
+        <label for="registroApellido">Apellido</label>
+        <input type="text" id="registroApellido" class="form-control" autocomplete="family-name" required>
+      </div>
+
+      <div class="form-group">
+        <label for="registroUsuario">Usuario</label>
+        <input type="text" id="registroUsuario" class="form-control" autocomplete="username" required>
+      </div>
+
+      <div class="form-group">
+        <label for="registroClave">Contraseña</label>
+        <input type="password" id="registroClave" class="form-control" autocomplete="new-password" minlength="4" required>
+      </div>
+
+      <div class="form-group">
+        <label for="registroClave2">Repetir contraseña</label>
+        <input type="password" id="registroClave2" class="form-control" autocomplete="new-password" minlength="4" required>
+      </div>
+
+      <p id="registroError" class="login-error"></p>
+
+      <button type="submit" id="btnRegistrar" class="btn btn-primary login-boton">Registrarme</button>
+    </form>
+
+    <p style="text-align: center; font-size: 13px; margin-top: 16px;">
+      ¿Ya tenés usuario? <a href="./login.html">Iniciá sesión</a>
+    </p>
+  </div>
+
+  <script type="module" src="./src/registro.ts"></script>
+</body>
+</html>

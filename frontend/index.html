@@ -77,6 +77,31 @@
 
     <!-- Grilla de Facturas -->
     <section class="table-container">
+      <div class="listado-toolbar">
+        <div class="toolbar-item">
+          <label for="selectOrden">Ordenar por</label>
+          <select id="selectOrden" class="form-control">
+            <option value="fecha_desc">Fecha: más reciente primero</option>
+            <option value="fecha_asc">Fecha: más antigua primero</option>
+            <option value="numero_desc">Número: mayor a menor</option>
+            <option value="numero_asc">Número: menor a mayor</option>
+            <option value="importe_desc">Importe: mayor a menor</option>
+            <option value="importe_asc">Importe: menor a mayor</option>
+            <option value="cliente_asc">Cliente: A a Z</option>
+            <option value="cliente_desc">Cliente: Z a A</option>
+          </select>
+        </div>
+        <div class="toolbar-item">
+          <label for="selectTamanioPagina">Mostrar</label>
+          <select id="selectTamanioPagina" class="form-control">
+            <option value="5">5</option>
+            <option value="10">10</option>
+            <option value="20">20</option>
+            <option value="50">50</option>
+          </select>
+          <span>por página</span>
+        </div>
+      </div>
       <table class="facturas-table">
         <thead>
           <tr>

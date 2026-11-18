@@ -1,6 +1,5 @@
 import { FacturaService } from './services/facturaService';
 import { ClienteService } from './services/clienteService';
-import { FacturaVentaApi } from './services/facturaVentaApi';
 import { FacturaFiltrosDTO, FacturaReporteDTO } from './models/factura.dto';
 import { ClienteDTO } from './types/cliente';
 import { PageResponse } from './types/page';
@@ -13,7 +12,8 @@ const state: {
 } = {
   filtros: {
     page: 0,
-    size: 5
+    size: 5,
+    orden: 'fecha_desc'
   },
   clientes: []
 };
@@ -25,12 +25,13 @@ const paginationInfo = document.getElementById('paginationInfo') as HTMLElement;
 const btnPrevPage = document.getElementById('btnPrevPage') as HTMLButtonElement;
 const btnNextPage = document.getElementById('btnNextPage') as HTMLButtonElement;
 const pageNumbersContainer = document.getElementById('pageNumbers') as HTMLElement;
+const selectOrden = document.getElementById('selectOrden') as HTMLSelectElement;
+const selectTamanioPagina = document.getElementById('selectTamanioPagina') as HTMLSelectElement;
 
 const inputNumero = document.getElementById('filtroNumero') as HTMLInputElement;
 const inputCliente = document.getElementById('filtroCliente') as HTMLInputElement;
 const selectCondicionIva = document.getElementById('filtroCondicionIva') as HTMLSelectElement;
 const selectEstado = document.getElementById('filtroEstado') as HTMLSelectElement;
-const selectListaPrecio = document.getElementById('filtroListaPrecio') as HTMLSelectElement;
 const inputFechaDesde = document.getElementById('filtroFechaDesde') as HTMLInputElement;
 const inputFechaHasta = document.getElementById('filtroFechaHasta') as HTMLInputElement;
 
@@ -95,6 +96,8 @@ function renderizarTablaFacturas(facturas: FacturaReporteDTO[]) {
   tbodyFacturas.innerHTML = facturas.map(f => {
     const estado = f.estado || 'EMITIDA';
     const badgeClass = estado === 'ANULADA' ? 'badge-anulada' : 'badge-emitida';
+    // Informada a ARCA (con CAE): no se edita ni se elimina, solo se anula (baja lógica)
+    const informada = !!f.cae;
 
     return `
       <tr data-id="${f.id ?? ''}">
@@ -111,12 +114,12 @@ function renderizarTablaFacturas(facturas: FacturaReporteDTO[]) {
         </td>
         <td class="text-center">
           <div class="actions-cell">
-            <button class="btn btn-sm btn-edit" data-id="${f.id ?? ''}" title="Editar Factura">Editar</button>
-            ${estado !== 'ANULADA' ? `<button class="btn btn-sm btn-anular" data-id="${f.id ?? ''}" data-numero="${f.numeroFactura}" title="Anular Factura">Anular</button>` : ''}
+            ${!informada ? `<button class="btn btn-sm btn-edit" data-id="${f.id ?? ''}" title="Editar Factura">Editar</button>` : ''}
+            ${!informada ? `<button class="btn btn-sm btn-delete btn-eliminar" data-id="${f.id ?? ''}" data-numero="${f.numeroFactura}" title="Eliminar factura (todavía no fue informada a ARCA)">Eliminar</button>` : ''}
+            ${informada && estado !== 'ANULADA' ? `<button class="btn btn-sm btn-anular" data-id="${f.id ?? ''}" data-numero="${f.numeroFactura}" title="Anular factura (baja lógica)">Anular</button>` : ''}
             ${f.cae
               ? `<button class="btn btn-sm btn-imprimir" data-id="${f.id ?? ''}" title="Imprimir factura en PDF">Imprimir PDF</button>`
-              : `${estado !== 'ANULADA' ? `<button class="btn btn-sm btn-cae" data-id="${f.id ?? ''}" data-numero="${f.numeroFactura}" title="Obtener CAE de AFIP">Obtener CAE</button>` : ''}
-            <button class="btn btn-sm btn-delete" data-id="${f.id ?? ''}" data-numero="${f.numeroFactura}" title="Eliminar Factura">Eliminar</button>`}
+              : `${estado !== 'ANULADA' ? `<button class="btn btn-sm btn-cae" data-id="${f.id ?? ''}" data-numero="${f.numeroFactura}" title="Obtener CAE de AFIP">Obtener CAE</button>` : ''}`}
           </div>
         </td>
       </tr>
@@ -138,13 +141,31 @@ function renderizarTablaFacturas(facturas: FacturaReporteDTO[]) {
       const id = parseInt(target.getAttribute('data-id') || '0', 10);
       const numero = target.getAttribute('data-numero') || '';
 
-      if (id && confirm(`¿Está seguro de que desea anular la factura N° ${numero}?`)) {
+      if (id && confirm(`¿Está seguro de que desea anular la factura N° ${numero}? Ya fue informada a ARCA: queda guardada como ANULADA (baja lógica).`)) {
         try {
-          await FacturaService.actualizarEstado(id, 'ANULADA', 'Anulada desde el frontend');
+          await FacturaService.anularFactura(id);
           alert(`Factura N° ${numero} anulada correctamente.`);
           cargarFacturas();
         } catch (err: any) {
           alert(`Error al anular: ${err.message}`);
+        }
+      }
+    });
+  });
+
+  tbodyFacturas.querySelectorAll('.btn-eliminar').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const target = e.currentTarget as HTMLElement;
+      const id = parseInt(target.getAttribute('data-id') || '0', 10);
+      const numero = target.getAttribute('data-numero') || '';
+
+      if (id && confirm(`¿Eliminar la factura N° ${numero}? Todavía no fue informada a ARCA, así que se borra definitivamente.`)) {
+        try {
+          await FacturaService.eliminarFactura(id);
+          alert(`Factura N° ${numero} eliminada.`);
+          cargarFacturas();
+        } catch (err: any) {
+          alert(`No se pudo eliminar: ${err.message}`);
         }
       }
     });
@@ -175,24 +196,6 @@ function renderizarTablaFacturas(facturas: FacturaReporteDTO[]) {
     btn.addEventListener('click', (e) => {
       const id = parseInt((e.currentTarget as HTMLElement).getAttribute('data-id') || '0', 10);
       if (id) window.open(FacturaService.getPdfFacturaUrl(id), '_blank');
-    });
-  });
-
-  tbodyFacturas.querySelectorAll('.btn-delete').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      const target = e.currentTarget as HTMLElement;
-      const id = parseInt(target.getAttribute('data-id') || '0', 10);
-      const numero = target.getAttribute('data-numero') || '';
-
-      if (id && confirm(`¿Está seguro de que desea eliminar permanentemente la factura N° ${numero}?`)) {
-        try {
-          await FacturaService.eliminarFactura(id);
-          alert(`Factura N° ${numero} eliminada exitosamente.`);
-          cargarFacturas();
-        } catch (err: any) {
-          alert(`Error al eliminar: ${err.message}`);
-        }
-      }
     });
   });
 }
@@ -241,7 +244,6 @@ function aplicarFiltros() {
   state.filtros.estado = selectEstado ? selectEstado.value || undefined : undefined;
   state.filtros.fechaDesde = inputFechaDesde.value || undefined;
   state.filtros.fechaHasta = inputFechaHasta.value || undefined;
-  state.filtros.listaPrecioId = selectListaPrecio && selectListaPrecio.value ? Number(selectListaPrecio.value) : undefined;
   state.filtros.page = 0;
 
   cargarFacturas();
@@ -253,13 +255,13 @@ function limpiarFiltros() {
   inputCliente.value = '';
   selectCondicionIva.value = '';
   if (selectEstado) selectEstado.value = '';
-  if (selectListaPrecio) selectListaPrecio.value = '';
   inputFechaDesde.value = '';
   inputFechaHasta.value = '';
 
   state.filtros = {
     page: 0,
-    size: 5
+    size: state.filtros.size ?? 5,
+    orden: state.filtros.orden ?? 'fecha_desc'
   };
 
   cargarFacturas();
@@ -324,6 +326,19 @@ btnNuevaFactura.addEventListener('click', () => {
 });
 
 btnBuscar.addEventListener('click', aplicarFiltros);
+
+// Ordenar y cantidad por página: vuelven a la primera página
+selectOrden.addEventListener('change', () => {
+  state.filtros.orden = selectOrden.value;
+  state.filtros.page = 0;
+  cargarFacturas();
+});
+
+selectTamanioPagina.addEventListener('change', () => {
+  state.filtros.size = parseInt(selectTamanioPagina.value, 10) || 5;
+  state.filtros.page = 0;
+  cargarFacturas();
+});
 btnLimpiar.addEventListener('click', limpiarFiltros);
 
 btnPrevPage.addEventListener('click', () => {
@@ -357,20 +372,7 @@ inputBuscarCliente.addEventListener('input', () => {
   }, 300);
 });
 
-async function cargarListasPrecioFiltro() {
-  try {
-    const listas = await FacturaVentaApi.listarListasPrecio();
-    if (selectListaPrecio) {
-      selectListaPrecio.innerHTML = '<option value="">Todas las Listas</option>' +
-        listas.map((lp: any) => `<option value="${lp.id}">${lp.codigo} - ${lp.denominacion}</option>`).join('');
-    }
-  } catch (err) {
-    console.error('Error al cargar listas de precio:', err);
-  }
-}
-
 // Inicialización
 document.addEventListener('DOMContentLoaded', () => {
-  cargarListasPrecioFiltro();
   cargarFacturas();
 });

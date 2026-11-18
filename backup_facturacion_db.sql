@@ -224,7 +224,7 @@ CREATE TABLE `factura_venta` (
   `usuario_baja_id` bigint DEFAULT NULL,
   `usuario_carga_id` bigint NOT NULL,
   `usuario_modificacion_id` bigint NOT NULL,
-  `cliente_id` bigint NOT NULL,
+  `cliente_id` bigint DEFAULT NULL,
   `condicion_iva` bigint NOT NULL,
   `punto_venta_id` bigint NOT NULL,
   `tipo_moneda` bigint NOT NULL,

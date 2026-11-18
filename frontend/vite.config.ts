@@ -10,7 +10,9 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
-        facturaForm: resolve(__dirname, 'factura-form.html')
+        facturaForm: resolve(__dirname, 'factura-form.html'),
+        login: resolve(__dirname, 'login.html'),
+        registro: resolve(__dirname, 'registro.html')
       }
     }
   }

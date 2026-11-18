@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Iniciar sesión - Facturas de Venta</title>
+  <link rel="stylesheet" href="./src/style.css">
+</head>
+<body class="login-body">
+  <div class="login-card card">
+    <h1 class="title login-title">Facturas de Venta</h1>
+    <p class="login-subtitulo">Ingresá con tu usuario para continuar</p>
+
+    <form id="loginForm" class="login-form">
+      <div class="form-group">
+        <label for="loginUsuario">Usuario</label>
+        <input type="text" id="loginUsuario" class="form-control" autocomplete="username" required autofocus>
+      </div>
+
+      <div class="form-group">
+        <label for="loginClave">Contraseña</label>
+        <input type="password" id="loginClave" class="form-control" autocomplete="current-password" required>
+      </div>
+
+      <p id="loginError" class="login-error"></p>
+      <p id="loginRegistrar" style="display: none; font-size: 13px; margin: -4px 0 12px;">
+        <a id="linkRegistrarUsuario" href="./registro.html">Registrar este usuario</a>
+      </p>
+
+      <button type="submit" id="btnIngresar" class="btn btn-primary login-boton">Ingresar</button>
+    </form>
+
+    <p style="text-align: center; font-size: 13px; margin-top: 16px;">
+      ¿No tenés usuario? <a href="./registro.html">Registrate</a>
+    </p>
+  </div>
+
+  <script type="module" src="./src/login.ts"></script>
+</body>
+</html>

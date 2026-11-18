@@ -36,6 +36,7 @@ npm run dev
 La aplicación web estará disponible en `http://localhost:3000`.
 
 ## Funcionalidades
+- Inicio de sesión y registro de usuarios (claves guardadas con BCrypt). Todas las rutas `/api/**` requieren sesión, salvo login y registro.
 - Listado de facturas con filtros por número, cliente, condición de IVA, estado y rango de fechas.
 - Paginación dinámica del listado.
 - Alta de nueva factura con cálculo automático de subtotales y total, filtrando los productos que se pueden agregar según la lista de precio seleccionada.
@@ -43,4 +44,9 @@ La aplicación web estará disponible en `http://localhost:3000`.
 - Edición y anulación de facturas existentes.
 - Eliminación de facturas que no tienen CAE.
 - Impresión de la factura en PDF (solo con CAE).
+- Ordenamiento del listado por fecha, importe o cliente.
 - Exportación del listado a PDF y Excel.
+
+## Scripts SQL
+- `backup_facturacion_db.sql` y `datos_prueba_facturacion.sql`: estructura y datos de prueba.
+- `productos_tecnologia.sql`: agrega la categoría "Celulares y Tablets" y productos de tecnología con precio en todas las listas (se puede ejecutar más de una vez).

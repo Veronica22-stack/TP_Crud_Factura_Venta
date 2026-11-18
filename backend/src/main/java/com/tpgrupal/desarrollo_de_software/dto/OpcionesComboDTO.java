@@ -15,7 +15,6 @@ public class OpcionesComboDTO {
     private List<ItemComboDTO> puntosVenta;
     private List<ItemComboDTO> condicionesIva;
     private List<ItemComboDTO> clientes;
-    private List<ArticuloComboDTO> articulos;
 
     @Data
     @NoArgsConstructor
@@ -23,16 +22,5 @@ public class OpcionesComboDTO {
     public static class ItemComboDTO {
         private Long id;
         private String descripcion;
-    }
-
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class ArticuloComboDTO {
-        private Long id;
-        private Long listaPrecioArticuloId;
-        private String codigo;
-        private String denominacion;
-        private double precioVenta;
     }
 }

@@ -793,3 +793,141 @@ body {
   font-size: 11px;
   font-weight: 600;
 }
+
+/* ---------- Tabla de ítems del formulario: columnas fijas para que "Acciones" siempre se vea ---------- */
+.detalles-table {
+  table-layout: fixed;
+}
+
+.detalles-table td .form-control {
+  width: 100%;
+  min-width: 0;
+  text-overflow: ellipsis;
+}
+
+.detalles-table td:nth-child(5) {
+  white-space: nowrap;
+}
+
+.detalles-table th:last-child,
+.detalles-table td:last-child {
+  white-space: nowrap;
+  text-align: center;
+}
+
+/* ---------- Inicio de sesión ---------- */
+.login-body {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 380px;
+  padding: 32px;
+}
+
+.login-title {
+  font-size: 24px;
+  margin-bottom: 4px;
+}
+
+.login-subtitulo {
+  color: var(--tinta-suave);
+  margin-bottom: 24px;
+}
+
+.login-form .form-group {
+  margin-bottom: 16px;
+}
+
+.login-error {
+  min-height: 20px;
+  color: var(--peligro);
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.login-boton {
+  width: 100%;
+  padding: 11px 18px;
+}
+
+/* ---------- Usuario en el encabezado ---------- */
+.header-acciones {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.usuario-nombre {
+  color: var(--tinta-media);
+  font-weight: 500;
+}
+
+/* ---------- Consumidor Final sin cliente ---------- */
+.check-consumidor-final {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--tinta-media);
+  cursor: pointer;
+}
+
+/* ---------- Explorador de productos ---------- */
+.modal-dialog.modal-dialog-ancho {
+  max-width: 900px;
+}
+
+.filtros-productos {
+  display: grid;
+  grid-template-columns: 1fr 1fr 2fr;
+  gap: 10px;
+}
+
+.producto-elegido {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.producto-lista {
+  font-size: 11px;
+  color: var(--tinta-suave);
+  margin-top: 4px;
+}
+
+/* ---------- Orden y cantidad por página del listado ---------- */
+.listado-toolbar {
+  padding: 16px 16px 4px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.listado-toolbar .toolbar-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--tinta-media);
+}
+
+.listado-toolbar .form-control {
+  width: auto;
+}
+
+@media (max-width: 640px) {
+  .filtros-productos {
+    grid-template-columns: 1fr;
+  }
+}

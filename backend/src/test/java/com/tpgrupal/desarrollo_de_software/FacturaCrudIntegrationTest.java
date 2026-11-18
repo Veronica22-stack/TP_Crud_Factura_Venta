@@ -151,6 +151,5 @@ public class FacturaCrudIntegrationTest {
         assertFalse(response.getBody().getPuntosVenta().isEmpty());
         assertFalse(response.getBody().getCondicionesIva().isEmpty());
         assertFalse(response.getBody().getClientes().isEmpty());
-        assertFalse(response.getBody().getArticulos().isEmpty());
     }
 }

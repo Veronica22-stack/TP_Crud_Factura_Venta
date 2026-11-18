@@ -6,6 +6,7 @@ import {
 } from '../models/factura.dto';
 import { PageResponse } from '../types/page';
 import { ListaPrecioArticuloDTO } from '../types/listaPrecioArticulo';
+import { authFetch, urlConToken } from './authService';
 
 const API_BASE_URL = 'http://localhost:8080/api/facturas';
 
@@ -41,10 +42,14 @@ export class FacturaService {
       params.append('listaPrecioId', filtros.listaPrecioId.toString());
     }
 
+    if (filtros.orden) {
+      params.append('orden', filtros.orden);
+    }
+
     params.append('page', (filtros.page ?? 0).toString());
     params.append('size', (filtros.size ?? 5).toString());
 
-    const res = await fetch(`${API_BASE_URL}?${params.toString()}`);
+    const res = await authFetch(`${API_BASE_URL}?${params.toString()}`);
     if (!res.ok) {
       const errorText = await res.text();
       throw new Error(`Error ${res.status}: ${errorText || res.statusText}`);
@@ -56,7 +61,7 @@ export class FacturaService {
    * Obtiene una factura por ID con sus detalles
    */
   static async obtenerFacturaPorId(id: number): Promise<FacturaReporteDTO> {
-    const res = await fetch(`${API_BASE_URL}/${id}`);
+    const res = await authFetch(`${API_BASE_URL}/${id}`);
     if (!res.ok) {
       throw new Error(`Error al obtener factura con ID ${id}`);
     }
@@ -67,7 +72,7 @@ export class FacturaService {
    * Crea una nueva factura
    */
   static async crearFactura(factura: FacturaRequestDTO): Promise<FacturaReporteDTO> {
-    const res = await fetch(API_BASE_URL, {
+    const res = await authFetch(API_BASE_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -87,7 +92,7 @@ export class FacturaService {
    * Actualiza una factura completa existente (cabecera e ítems)
    */
   static async actualizarFactura(id: number, factura: FacturaRequestDTO): Promise<FacturaReporteDTO> {
-    const res = await fetch(`${API_BASE_URL}/${id}`, {
+    const res = await authFetch(`${API_BASE_URL}/${id}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json'
@@ -104,32 +109,21 @@ export class FacturaService {
   }
 
   /**
-   * Actualiza el estado de una factura
+   * Anula una factura (baja lógica): queda guardada, marcada como ANULADA
    */
-  static async actualizarEstado(id: number, estado: string, observaciones?: string): Promise<FacturaReporteDTO> {
-    const body: Partial<FacturaRequestDTO> = { estado, observaciones };
-
-    const res = await fetch(`${API_BASE_URL}/${id}`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(body)
-    });
-
+  static async anularFactura(id: number): Promise<void> {
+    const res = await authFetch(`${API_BASE_URL}/${id}/anular`, { method: 'PUT' });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ message: res.statusText }));
-      throw new Error(err.message || 'Error al actualizar estado de la factura');
+      throw new Error(err.message || 'Error al anular la factura');
     }
-
-    return res.json();
   }
 
   /**
    * Solicita el CAE a AFIP para una factura ya creada
    */
   static async obtenerCae(id: number): Promise<{ cae: string; vencimiento: string }> {
-    const res = await fetch(`${API_BASE_URL}/emitir-afip`, {
+    const res = await authFetch(`${API_BASE_URL}/emitir-afip`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id })
@@ -153,14 +147,14 @@ export class FacturaService {
    * URL del PDF de una factura con CAE
    */
   static getPdfFacturaUrl(id: number): string {
-    return `${API_BASE_URL}/${id}/pdf`;
+    return urlConToken(`${API_BASE_URL}/${id}/pdf`);
   }
 
   /**
    * Elimina una factura por ID
    */
   static async eliminarFactura(id: number): Promise<void> {
-    const res = await fetch(`${API_BASE_URL}/${id}`, {
+    const res = await authFetch(`${API_BASE_URL}/${id}`, {
       method: 'DELETE'
     });
 
@@ -174,7 +168,7 @@ export class FacturaService {
    * Carga opciones auxiliares para alimentar los selects del formulario
    */
   static async obtenerOpciones(): Promise<OpcionesComboDTO> {
-    const res = await fetch(`${API_BASE_URL}/opciones`);
+    const res = await authFetch(`${API_BASE_URL}/opciones`);
     if (!res.ok) {
       throw new Error('Error al obtener opciones para formularios');
     }
@@ -193,7 +187,9 @@ export class FacturaService {
     if (filtros.fechaHasta) params.append('fechaHasta', filtros.fechaHasta);
     if (filtros.estado) params.append('estado', filtros.estado);
     if (filtros.montoMinimo) params.append('montoMinimo', filtros.montoMinimo.toString());
-    return `${API_BASE_URL}/export/pdf?${params.toString()}`;
+    if (filtros.listaPrecioId) params.append('listaPrecioId', filtros.listaPrecioId.toString());
+    if (filtros.orden) params.append('orden', filtros.orden);
+    return urlConToken(`${API_BASE_URL}/export/pdf?${params.toString()}`);
   }
 
   /**
@@ -209,11 +205,12 @@ export class FacturaService {
     if (filtros.estado) params.append('estado', filtros.estado);
     if (filtros.montoMinimo) params.append('montoMinimo', filtros.montoMinimo.toString());
     if (filtros.listaPrecioId) params.append('listaPrecioId', filtros.listaPrecioId.toString());
-    return `${API_BASE_URL}/export/excel?${params.toString()}`;
+    if (filtros.orden) params.append('orden', filtros.orden);
+    return urlConToken(`${API_BASE_URL}/export/excel?${params.toString()}`);
   }
 
   static async listarArticulosPorLista(listaPrecioId: number): Promise<ListaPrecioArticuloDTO[]> {
-    const res = await fetch(`http://localhost:8080/api/lista-precio-articulos?listaPrecioId=${listaPrecioId}`);
+    const res = await authFetch(`http://localhost:8080/api/lista-precio-articulos?listaPrecioId=${listaPrecioId}`);
     if (!res.ok) {
       throw new Error('Error al obtener los productos de la lista de precios');
     }
@@ -221,7 +218,7 @@ export class FacturaService {
   }
 
   static async listarListasPrecio(): Promise<any[]> {
-    const res = await fetch('http://localhost:8080/api/listas-precio');
+    const res = await authFetch('http://localhost:8080/api/listas-precio');
     if (!res.ok) return [];
     return res.json();
   }

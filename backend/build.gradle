@@ -26,6 +26,8 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-jdbc'
 	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
 	implementation 'com.github.librepdf:openpdf:1.3.39'
+    // BCrypt para encriptar las claves del login (solo la parte de criptografia, sin Spring Security completo)
+    implementation 'org.springframework.security:spring-security-crypto'
     // Bouncy Castle para la firma CMS (PKCS#7) del WSAA
     implementation 'org.bouncycastle:bcpkix-jdk18on:1.78'
     implementation 'org.bouncycastle:bcprov-jdk18on:1.78'

@@ -17,6 +17,7 @@ public class FacturaReporteDTO {
     private Long id;
     private Long numeroFactura;
     private Date fechaEmision;
+    private Long clienteId;
     private String clienteDenominacion;
     private String condicionIva;
     private String puntoVentaDescripcion;
@@ -32,23 +33,10 @@ public class FacturaReporteDTO {
     private Integer nroComprobanteAfip;
     private Integer tipoComprobanteAfip;
 
-    // Constructor para consultas JPQL previas (compatibilidad hacia atrás)
-    public FacturaReporteDTO(Long numeroFactura, Date fechaEmision, String clienteDenominacion,
-                             String condicionIva, String puntoVentaDescripcion, double importeTotal,
-                             long cantidadItems) {
-        this.numeroFactura = numeroFactura;
-        this.fechaEmision = fechaEmision;
-        this.clienteDenominacion = clienteDenominacion;
-        this.condicionIva = condicionIva;
-        this.puntoVentaDescripcion = puntoVentaDescripcion;
-        this.importeTotal = importeTotal;
-        this.cantidadItems = cantidadItems;
-    }
-
-    // Constructor para consultas JPQL con ID y Estado
+    // Constructor que usa la consulta JPQL del listado (SELECT new ...)
     public FacturaReporteDTO(Long id, Long numeroFactura, Date fechaEmision, String clienteDenominacion,
                              String condicionIva, String puntoVentaDescripcion, double importeTotal,
-                             long cantidadItems, String estado) {
+                             long cantidadItems, String estado, String cae) {
         this.id = id;
         this.numeroFactura = numeroFactura;
         this.fechaEmision = fechaEmision;
@@ -58,14 +46,6 @@ public class FacturaReporteDTO {
         this.importeTotal = importeTotal;
         this.cantidadItems = cantidadItems;
         this.estado = estado;
-    }
-
-    // Constructor para el listado: incluye el CAE
-    public FacturaReporteDTO(Long id, Long numeroFactura, Date fechaEmision, String clienteDenominacion,
-                             String condicionIva, String puntoVentaDescripcion, double importeTotal,
-                             long cantidadItems, String estado, String cae) {
-        this(id, numeroFactura, fechaEmision, clienteDenominacion, condicionIva, puntoVentaDescripcion,
-                importeTotal, cantidadItems, estado);
         this.cae = cae;
     }
 }

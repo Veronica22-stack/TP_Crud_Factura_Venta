@@ -28,7 +28,9 @@ public class GlobalExceptionHandler {
         body.put("timestamp", LocalDateTime.now());
         body.put("status", HttpStatus.BAD_REQUEST.value());
         body.put("error", "Bad Request");
-        body.put("message", "El cuerpo de la petición (JSON) es requerido o contiene datos inválidos.");
+        body.put("message", ex instanceof IllegalArgumentException && ex.getMessage() != null
+                ? ex.getMessage()
+                : "El cuerpo de la petición (JSON) es requerido o contiene datos inválidos.");
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
     }
 

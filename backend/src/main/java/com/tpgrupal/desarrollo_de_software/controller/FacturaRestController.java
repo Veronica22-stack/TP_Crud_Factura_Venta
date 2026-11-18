@@ -43,11 +43,12 @@ public class FacturaRestController {
             @RequestParam(required = false) String estado,
             @RequestParam(required = false) Double montoMinimo,
             @RequestParam(required = false) Long listaPrecioId,
+            @RequestParam(defaultValue = "fecha_desc") String orden,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "5") int size) {
 
         PageResponse<FacturaReporteDTO> resultado = facturaService.buscarFacturasPaginadas(
-                numero, cliente, condicionIva, fechaDesde, fechaHasta, estado, montoMinimo, listaPrecioId, page, size);
+                numero, cliente, condicionIva, fechaDesde, fechaHasta, estado, montoMinimo, listaPrecioId, orden, page, size);
 
         return ResponseEntity.ok(resultado);
     }
@@ -152,10 +153,11 @@ public class FacturaRestController {
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") Date fechaHasta,
             @RequestParam(required = false) String estado,
             @RequestParam(required = false) Double montoMinimo,
-            @RequestParam(required = false) Long listaPrecioId) {
+            @RequestParam(required = false) Long listaPrecioId,
+            @RequestParam(defaultValue = "fecha_desc") String orden) {
 
         List<FacturaReporteDTO> facturas = facturaService.buscarFacturasFiltradas(
-                numero, cliente, condicionIva, fechaDesde, fechaHasta, estado, montoMinimo, listaPrecioId);
+                numero, cliente, condicionIva, fechaDesde, fechaHasta, estado, montoMinimo, listaPrecioId, orden);
         ByteArrayInputStream bis = reporteService.generarPdf(facturas);
 
         HttpHeaders headers = new HttpHeaders();
@@ -177,10 +179,11 @@ public class FacturaRestController {
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") Date fechaHasta,
             @RequestParam(required = false) String estado,
             @RequestParam(required = false) Double montoMinimo,
-            @RequestParam(required = false) Long listaPrecioId) {
+            @RequestParam(required = false) Long listaPrecioId,
+            @RequestParam(defaultValue = "fecha_desc") String orden) {
 
         List<FacturaReporteDTO> facturas = facturaService.buscarFacturasFiltradas(
-                numero, cliente, condicionIva, fechaDesde, fechaHasta, estado, montoMinimo, listaPrecioId);
+                numero, cliente, condicionIva, fechaDesde, fechaHasta, estado, montoMinimo, listaPrecioId, orden);
         ByteArrayInputStream bis = reporteService.generarExcelTsv(facturas);
 
         HttpHeaders headers = new HttpHeaders();

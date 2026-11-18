@@ -1,5 +1,6 @@
 package com.tpgrupal.desarrollo_de_software.service;
 
+import com.tpgrupal.desarrollo_de_software.auth.SesionActual;
 import com.tpgrupal.desarrollo_de_software.dto.*;
 import com.tpgrupal.desarrollo_de_software.exception.DuplicateResourceException;
 import com.tpgrupal.desarrollo_de_software.exception.FacturaConCaeException;
@@ -48,6 +49,20 @@ public class FacturaService {
         this.listaPrecioArticuloRepository = listaPrecioArticuloRepository;
     }
 
+    // Columnas por las que se puede ordenar el listado (se arma con una lista cerrada
+    // para no meter en la consulta texto que venga del navegador)
+    private static final Map<String, String> ORDENES = Map.of(
+            "fecha_desc", "f.fechaEmision DESC, f.numero DESC",
+            "fecha_asc", "f.fechaEmision ASC, f.numero ASC",
+            "numero_desc", "f.numero DESC",
+            "numero_asc", "f.numero ASC",
+            "importe_desc", "f.importeTotal DESC, f.numero DESC",
+            "importe_asc", "f.importeTotal ASC, f.numero ASC",
+            "cliente_asc", "COALESCE(c.denominacion, 'Consumidor Final') ASC, f.numero DESC",
+            "cliente_desc", "COALESCE(c.denominacion, 'Consumidor Final') DESC, f.numero DESC"
+    );
+    private static final String ORDEN_POR_DEFECTO = "fecha_desc";
+
     @Transactional(readOnly = true)
     public PageResponse<FacturaReporteDTO> buscarFacturasPaginadas(
             Long numero,
@@ -58,24 +73,35 @@ public class FacturaService {
             String estado,
             Double montoMinimo,
             Long listaPrecioId,
+            String orden,
             int page,
             int size) {
 
-        List<FacturaReporteDTO> todas = buscarFacturasFiltradas(
-                numero, cliente, condicionIva, fechaDesde, fechaHasta, estado, montoMinimo, listaPrecioId);
+        if (size < 1) size = 5;
+        if (page < 0) page = 0;
 
-        int totalElements = todas.size();
+        Map<String, Object> params = new HashMap<>();
+        String filtros = armarFiltros(numero, cliente, condicionIva, fechaDesde, fechaHasta,
+                estado, montoMinimo, listaPrecioId, params);
+
+        // 1. COUNT: cuántas facturas cumplen los filtros (sin traerlas)
+        TypedQuery<Long> countQuery = em.createQuery(
+                "SELECT COUNT(f) " + FROM_LISTADO + filtros, Long.class);
+        params.forEach(countQuery::setParameter);
+        long totalElements = countQuery.getSingleResult();
+
         int totalPages = (int) Math.ceil((double) totalElements / size);
         if (totalPages == 0) totalPages = 1;
+        if (page > totalPages - 1) page = totalPages - 1;
 
-        int fromIndex = page * size;
-        List<FacturaReporteDTO> content;
-        if (fromIndex >= totalElements) {
-            content = Collections.emptyList();
-        } else {
-            int toIndex = Math.min(fromIndex + size, totalElements);
-            content = todas.subList(fromIndex, toIndex);
-        }
+        // 2. Se trae de la base solo la página pedida
+        TypedQuery<FacturaReporteDTO> query = em.createQuery(
+                SELECT_LISTADO + FROM_LISTADO + filtros + "ORDER BY " + ordenJpql(orden),
+                FacturaReporteDTO.class);
+        params.forEach(query::setParameter);
+        query.setFirstResult(page * size);
+        query.setMaxResults(size);
+        List<FacturaReporteDTO> content = query.getResultList();
 
         return PageResponse.<FacturaReporteDTO>builder()
                 .content(content)
@@ -88,6 +114,7 @@ public class FacturaService {
                 .build();
     }
 
+    // Lista completa (sin paginar) para exportar a PDF / Excel
     @Transactional(readOnly = true)
     public List<FacturaReporteDTO> buscarFacturasFiltradas(
             Long numero,
@@ -97,29 +124,62 @@ public class FacturaService {
             Date fechaHasta,
             String estado,
             Double montoMinimo,
-            Long listaPrecioId) {
-
-        StringBuilder jpql = new StringBuilder(
-                "SELECT new com.tpgrupal.desarrollo_de_software.dto.FacturaReporteDTO(" +
-                        "  f.id, f.numero, f.fechaEmision, COALESCE(c.denominacion, 'Consumidor Final'), " +
-                        "  ci.denominacion, pv.descripcion, f.importeTotal, COUNT(DISTINCT d.id), f.estado, f.cae" +
-                        ") " +
-                        "FROM FacturaVenta f " +
-                        "LEFT JOIN f.cliente c " +
-                        "JOIN f.condicionIva ci " +
-                        "JOIN f.puntoVenta pv " +
-                        "LEFT JOIN f.detalles d " +
-                        "WHERE 1=1 "
-        );
+            Long listaPrecioId,
+            String orden) {
 
         Map<String, Object> params = new HashMap<>();
+        String filtros = armarFiltros(numero, cliente, condicionIva, fechaDesde, fechaHasta,
+                estado, montoMinimo, listaPrecioId, params);
+
+        TypedQuery<FacturaReporteDTO> query = em.createQuery(
+                SELECT_LISTADO + FROM_LISTADO + filtros + "ORDER BY " + ordenJpql(orden),
+                FacturaReporteDTO.class);
+        params.forEach(query::setParameter);
+
+        return query.getResultList();
+    }
+
+    // Una fila por factura. La cantidad de ítems sale de una subconsulta,
+    // así no hace falta unir los detalles ni agrupar (GROUP BY).
+    private static final String SELECT_LISTADO =
+            "SELECT new com.tpgrupal.desarrollo_de_software.dto.FacturaReporteDTO(" +
+            "  f.id, f.numero, f.fechaEmision, COALESCE(c.denominacion, 'Consumidor Final'), " +
+            "  ci.denominacion, pv.descripcion, f.importeTotal, " +
+            "  (SELECT COUNT(d) FROM FacturaVentaDetalle d WHERE d.factura = f), f.estado, f.cae" +
+            ") ";
+
+    private static final String FROM_LISTADO =
+            "FROM FacturaVenta f " +
+            "LEFT JOIN f.cliente c " +
+            "JOIN f.condicionIva ci " +
+            "JOIN f.puntoVenta pv " +
+            "WHERE 1=1 ";
+
+    private String ordenJpql(String orden) {
+        String clave = orden != null ? orden.trim().toLowerCase() : ORDEN_POR_DEFECTO;
+        return ORDENES.getOrDefault(clave, ORDENES.get(ORDEN_POR_DEFECTO)) + ", f.id DESC";
+    }
+
+    // Arma el WHERE con los filtros que vinieron (lo usan el COUNT y la consulta de la página)
+    private String armarFiltros(
+            Long numero,
+            String cliente,
+            String condicionIva,
+            Date fechaDesde,
+            Date fechaHasta,
+            String estado,
+            Double montoMinimo,
+            Long listaPrecioId,
+            Map<String, Object> params) {
+
+        StringBuilder jpql = new StringBuilder();
 
         if (numero != null) {
             jpql.append("AND f.numero = :numero ");
             params.put("numero", numero);
         }
         if (cliente != null && !cliente.trim().isEmpty()) {
-            jpql.append("AND (LOWER(c.denominacion) LIKE LOWER(:cliente) OR (:cliente = 'Consumidor Final' AND c IS NULL)) ");
+            jpql.append("AND LOWER(COALESCE(c.denominacion, 'Consumidor Final')) LIKE LOWER(:cliente) ");
             params.put("cliente", "%" + cliente.trim() + "%");
         }
         if (condicionIva != null && !condicionIva.trim().isEmpty()) {
@@ -143,17 +203,11 @@ public class FacturaService {
             params.put("montoMinimo", montoMinimo);
         }
         if (listaPrecioId != null) {
-            jpql.append("AND d.listaPrecioArticulo.listaPrecio.id = :listaPrecioId ");
+            jpql.append("AND EXISTS (SELECT d FROM FacturaVentaDetalle d " +
+                    "WHERE d.factura = f AND d.listaPrecioArticulo.listaPrecio.id = :listaPrecioId) ");
             params.put("listaPrecioId", listaPrecioId);
         }
-
-        jpql.append("GROUP BY f.id, f.numero, f.fechaEmision, c.denominacion, ci.denominacion, pv.descripcion, f.importeTotal, f.estado, f.cae ");
-        jpql.append("ORDER BY f.numero ASC");
-
-        TypedQuery<FacturaReporteDTO> query = em.createQuery(jpql.toString(), FacturaReporteDTO.class);
-        params.forEach(query::setParameter);
-
-        return query.getResultList();
+        return jpql.toString();
     }
 
     @Transactional(readOnly = true)
@@ -198,6 +252,7 @@ public class FacturaService {
     }
 
     public FacturaReporteDTO crearFactura(FacturaRequestDTO dto) {
+        validarDetalles(dto);
         Date ahora = new Date();
         FacturaVenta f = new FacturaVenta();
 
@@ -221,9 +276,9 @@ public class FacturaService {
         f.setEstado(estado);
         f.setObservaciones(dto.getObservaciones());
         
-        f.setCliente(resolverCliente(dto.getClienteId()));
         f.setPuntoVenta(resolverPuntoVenta(dto.getPuntoVentaId()));
         f.setCondicionIva(resolverCondicionIva(dto.getCondicionIvaId()));
+        f.setCliente(resolverClienteFactura(dto.getClienteId(), f.getCondicionIva()));
 
         f.setTipoMoneda(resolverTipoMoneda(dto.getTipoMonedaId()));
 
@@ -253,15 +308,27 @@ public class FacturaService {
     
     public FacturaReporteDTO actualizarFactura(Long id, FacturaRequestDTO dto) {
         FacturaVenta f = buscarFacturaPorIdONumero(id);
-        
-        if (dto.getClienteId() != null) {
-            f.setCliente(resolverCliente(dto.getClienteId()));
+
+        // Una factura informada a ARCA (con CAE) ya no se puede editar
+        if (tieneCae(f)) {
+            throw new FacturaConCaeException("La factura " + f.getNumero()
+                    + " ya fue informada a ARCA (CAE " + f.getCae() + ") y no se puede editar. Solo se puede anular.");
         }
+
+        // Si vienen los ítems es una edición completa desde el formulario
+        boolean edicionCompleta = dto.getDetalles() != null && !dto.getDetalles().isEmpty();
+        if (edicionCompleta) {
+            validarDetalles(dto);
+        }
+
         if (dto.getPuntoVentaId() != null) {
             f.setPuntoVenta(resolverPuntoVenta(dto.getPuntoVentaId()));
         }
         if (dto.getCondicionIvaId() != null) {
             f.setCondicionIva(resolverCondicionIva(dto.getCondicionIvaId()));
+        }
+        if (edicionCompleta || dto.getClienteId() != null) {
+            f.setCliente(resolverClienteFactura(dto.getClienteId(), f.getCondicionIva()));
         }
         if (dto.getTipoMonedaId() != null) {
             f.setTipoMoneda(resolverTipoMoneda(dto.getTipoMonedaId()));
@@ -303,9 +370,17 @@ public class FacturaService {
     public FacturaReporteDTO actualizarEstado(Long idOrNumero, String estado, String observaciones) {
         FacturaVenta f = buscarFacturaPorIdONumero(idOrNumero);
         String estadoUpper = estado != null ? estado.trim().toUpperCase() : "EMITIDA";
+        if (tieneCae(f) && !"ANULADA".equals(estadoUpper)) {
+            throw new FacturaConCaeException("La factura " + f.getNumero()
+                    + " ya fue informada a ARCA: solo se puede anular (baja lógica).");
+        }
         f.setEstado(estadoUpper);
-        if ("ANULADA".equals(estadoUpper) && f.getFechaAnulacion() == null) {
-            f.setFechaAnulacion(new Date());
+        if ("ANULADA".equals(estadoUpper)) {
+            // Baja lógica: la factura queda guardada pero marcada como dada de baja
+            Date ahora = new Date();
+            if (f.getFechaAnulacion() == null) f.setFechaAnulacion(ahora);
+            if (f.getFechaBaja() == null) f.setFechaBaja(ahora);
+            if (f.getUsuarioBaja() == null) f.setUsuarioBaja(resolverUsuarioAuditoria());
         }
         if (observaciones != null) {
             f.setObservaciones(observaciones);
@@ -320,12 +395,18 @@ public class FacturaService {
         actualizarEstado(idOrNumero, "ANULADA", "Anulada por usuario");
     }
 
+    // Eliminación física: solo si la factura todavía NO fue informada a ARCA
     public void eliminarFactura(Long idOrNumero) {
         FacturaVenta f = buscarFacturaPorIdONumero(idOrNumero);
-        if (f.getCae() != null && !f.getCae().isBlank()) {
-            throw new FacturaConCaeException("La factura " + f.getNumero() + " ya tiene CAE y no se puede eliminar.");
+        if (tieneCae(f)) {
+            throw new FacturaConCaeException("La factura " + f.getNumero()
+                    + " ya fue informada a ARCA (tiene CAE) y no se puede eliminar. Solo se puede anular (baja lógica).");
         }
         facturaVentaRepository.delete(f);
+    }
+
+    private boolean tieneCae(FacturaVenta f) {
+        return f.getCae() != null && !f.getCae().isBlank();
     }
 
     @Transactional(readOnly = true)
@@ -333,7 +414,6 @@ public class FacturaService {
         List<PuntoVenta> pvs = puntoVentaRepository.findAll();
         List<CondicionIva> cis = condicionIvaRepository.findAll();
         List<Cliente> cls = clienteRepository.findAll();
-        List<ListaPrecioArticulo> lpas = listaPrecioArticuloRepository.findAll();
 
         List<OpcionesComboDTO.ItemComboDTO> pvsDTO = pvs.stream()
                 .map(p -> new OpcionesComboDTO.ItemComboDTO(p.getId(), p.getNumero() + " - " + p.getDescripcion()))
@@ -347,20 +427,10 @@ public class FacturaService {
                 .map(c -> new OpcionesComboDTO.ItemComboDTO(c.getId(), c.getDenominacion()))
                 .toList();
 
-        List<OpcionesComboDTO.ArticuloComboDTO> artsDTO = lpas.stream()
-                .map(l -> new OpcionesComboDTO.ArticuloComboDTO(
-                        l.getArticulo() != null ? l.getArticulo().getId() : l.getId(),
-                        l.getId(),
-                        l.getArticulo() != null ? l.getArticulo().getCodigo() : "ART",
-                        l.getArticulo() != null ? l.getArticulo().getDenominacion() : "Articulo",
-                        l.getPrecioVenta()))
-                .toList();
-
         return OpcionesComboDTO.builder()
                 .puntosVenta(pvsDTO)
                 .condicionesIva(cisDTO)
                 .clientes(clsDTO)
-                .articulos(artsDTO)
                 .build();
     }
 
@@ -378,7 +448,13 @@ public class FacturaService {
     private static final double ALICUOTA_IVA = 1.21; // IVA 21% fijo
     
     private FacturaVentaDetalle crearDetalle(FacturaDetalleRequestDTO detDto, Long listaPrecioId) {
-        ListaPrecioArticulo lpa = resolverListaPrecioArticulo(detDto.getArticuloId(), listaPrecioId);
+        // Si el ítem trae su propio precio de lista (listaPrecioArticuloId), se usa ese:
+        // así cada ítem de la factura puede venir de una lista de precios distinta.
+        ListaPrecioArticulo lpa = detDto.getListaPrecioArticuloId() != null
+                ? listaPrecioArticuloRepository.findById(detDto.getListaPrecioArticuloId())
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "No existe el precio de lista con id: " + detDto.getListaPrecioArticuloId()))
+                : resolverListaPrecioArticulo(detDto.getArticuloId(), listaPrecioId);
         
         double cant = detDto.getCantidad() != null && detDto.getCantidad() > 0 ? detDto.getCantidad() : 1.0;
         double precio = lpa.getPrecioVenta();
@@ -408,6 +484,9 @@ public class FacturaService {
                         .id(d.getId())
                         .articuloId(d.getListaPrecioArticulo() != null && d.getListaPrecioArticulo().getArticulo() != null
                                 ? d.getListaPrecioArticulo().getArticulo().getId() : null)
+                        .listaPrecioArticuloId(d.getListaPrecioArticulo() != null ? d.getListaPrecioArticulo().getId() : null)
+                        .listaPrecioId(d.getListaPrecioArticulo() != null && d.getListaPrecioArticulo().getListaPrecio() != null
+                                ? d.getListaPrecioArticulo().getListaPrecio().getId() : null)
                         .productoDescripcion(d.getDescripcion())
                         .cantidad(d.getCantidad())
                         .precioUnitario(d.getPrecioUnitario())
@@ -426,6 +505,7 @@ public class FacturaService {
                 .id(f.getId())
                 .numeroFactura(f.getNumero())
                 .fechaEmision(f.getFechaEmision())
+                .clienteId(f.getCliente() != null ? f.getCliente().getId() : null)
                 .clienteDenominacion(f.getCliente() != null ? f.getCliente().getDenominacion() : "Consumidor Final")
                 .condicionIva(f.getCondicionIva() != null ? f.getCondicionIva().getDenominacion() : "")
                 .puntoVentaDescripcion(f.getPuntoVenta() != null ? f.getPuntoVenta().getDescripcion() : "")
@@ -443,6 +523,31 @@ public class FacturaService {
                 .build();
     }
     
+    // Una factura debe tener al menos un producto, y cada ítem un producto elegido
+    private void validarDetalles(FacturaRequestDTO dto) {
+        if (dto.getDetalles() == null || dto.getDetalles().isEmpty()) {
+            throw new IllegalArgumentException("La factura debe tener al menos un producto.");
+        }
+        for (FacturaDetalleRequestDTO d : dto.getDetalles()) {
+            if (d.getArticuloId() == null && d.getListaPrecioArticuloId() == null) {
+                throw new IllegalArgumentException("Todos los ítems de la factura deben tener un producto seleccionado.");
+            }
+        }
+    }
+
+    // Sin cliente solo se permite si la factura es a Consumidor Final
+    private Cliente resolverClienteFactura(Long clienteId, CondicionIva condicionIva) {
+        if (clienteId != null) return resolverCliente(clienteId);
+        if (esConsumidorFinal(condicionIva)) return null;
+        throw new IllegalArgumentException("Debe seleccionar un cliente. Solo las facturas a Consumidor Final pueden ir sin cliente.");
+    }
+
+    private boolean esConsumidorFinal(CondicionIva ci) {
+        if (ci == null) return false;
+        if (ci.getCodigoAfip() == 5) return true;
+        return ci.getDenominacion() != null && ci.getDenominacion().toLowerCase().contains("consumidor");
+    }
+
     private Cliente resolverCliente(Long id) {
         if (id == null) throw new IllegalArgumentException("clienteId es obligatorio.");
         return clienteRepository.findById(id)
@@ -461,48 +566,6 @@ public class FacturaService {
                 .orElseThrow(() -> new ResourceNotFoundException("No existe Condición de IVA con id: " + id));
     }
 
-    private PuntoVenta resolverPuntoVenta(Long id, String descripcionOId) {
-        if (id != null) {
-            return puntoVentaRepository.findById(id)
-                    .orElseThrow(() -> new ResourceNotFoundException("No existe Punto de Venta con id: " + id));
-        }
-        if (descripcionOId != null) {
-            try {
-                int num = Integer.parseInt(descripcionOId.replaceAll("\\D+", ""));
-                Optional<PuntoVenta> pv = puntoVentaRepository.findByNumero(num);
-                if (pv.isPresent()) return pv.get();
-            } catch (Exception ignored) {}
-        }
-        List<PuntoVenta> all = puntoVentaRepository.findAll();
-        if (!all.isEmpty()) return all.get(0);
-        throw new ResourceNotFoundException("No existen Puntos de Venta en la base de datos.");
-    }
-
-    private CondicionIva resolverCondicionIva(Long id, String denominacion) {
-        if (id != null) {
-            return condicionIvaRepository.findById(id)
-                    .orElseThrow(() -> new ResourceNotFoundException("No existe Condición de IVA con id: " + id));
-        }
-        if (denominacion != null && !denominacion.trim().isEmpty()) {
-            Optional<CondicionIva> ci = condicionIvaRepository.findByDenominacionIgnoreCase(denominacion.trim());
-            if (ci.isPresent()) return ci.get();
-
-            String trim = denominacion.trim().toLowerCase();
-            List<CondicionIva> allCi = condicionIvaRepository.findAll();
-            for (CondicionIva c : allCi) {
-                String dLower = c.getDenominacion().toLowerCase();
-                if (dLower.contains(trim) || trim.contains(dLower)
-                        || (trim.contains("exen") && dLower.contains("exen"))
-                        || (trim.contains("excep") && dLower.contains("exen"))) {
-                    return c;
-                }
-            }
-        }
-        List<CondicionIva> all = condicionIvaRepository.findAll();
-        if (!all.isEmpty()) return all.get(0);
-        throw new ResourceNotFoundException("No existen Condiciones de IVA en la base de datos.");
-    }
-    
     private ListaPrecioArticulo resolverListaPrecioArticulo(Long articuloId, Long listaPrecioId) {
         if (articuloId == null) throw new IllegalArgumentException("Cada detalle requiere articuloId.");
         
@@ -529,6 +592,13 @@ public class FacturaService {
     }
 
     private Usuario resolverUsuarioAuditoria() {
+        // Si hay una sesión iniciada, la factura queda a nombre de ese usuario
+        Long usuarioSesionId = SesionActual.getUsuarioId();
+        if (usuarioSesionId != null) {
+            Usuario usuarioSesion = em.find(Usuario.class, usuarioSesionId);
+            if (usuarioSesion != null) return usuarioSesion;
+        }
+
         List<Usuario> list = em.createQuery("SELECT u FROM Usuario u ORDER BY u.id ASC", Usuario.class)
                 .setMaxResults(1)
                 .getResultList();
