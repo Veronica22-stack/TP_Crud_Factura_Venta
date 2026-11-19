@@ -40,7 +40,6 @@ const btnLimpiar = document.getElementById('btnLimpiar') as HTMLButtonElement;
 const btnExportPdf = document.getElementById('btnExportPdf') as HTMLAnchorElement;
 const btnExportExcel = document.getElementById('btnExportExcel') as HTMLAnchorElement;
 const btnExportTxt = document.getElementById('btnExportTxt') as HTMLAnchorElement;
-const resumenPanel = document.getElementById('resumenPanel') as HTMLElement;
 const btnEstadoArca = document.getElementById('btnEstadoArca') as HTMLButtonElement;
 
 // Modal Explorer de Clientes
@@ -77,7 +76,6 @@ export async function cargarFacturas() {
     renderizarTablaFacturas(data.content);
     renderizarPaginacion(data);
     actualizarEnlacesExportacion();
-    cargarResumen();
   } catch (err: any) {
     tbodyFacturas.innerHTML = `
       <tr>
@@ -90,29 +88,13 @@ export async function cargarFacturas() {
   }
 }
 
-// Panel de control: los totales se calculan en el backend (no se descarga el listado completo)
-async function cargarResumen() {
-  if (!resumenPanel) return;
-  try {
-    const r = await FacturaService.obtenerResumen();
-    resumenPanel.innerHTML = `
-      <div class="resumen-item"><span>Total facturado</span><strong>$ ${formatearMoneda(r.totalFacturado)}</strong></div>
-      <div class="resumen-item"><span>Con CAE</span><strong>${r.conCae}</strong></div>
-      <div class="resumen-item"><span>Pendientes de CAE</span><strong>${r.pendientes}</strong></div>
-      <div class="resumen-item"><span>Anuladas</span><strong>${r.anuladas}</strong></div>
-    `;
-  } catch {
-    resumenPanel.innerHTML = '';
-  }
-}
-
 const TIPOS_COMPROBANTE: Record<number, string> = { 1: 'A', 6: 'B', 11: 'C' };
 
 function escaparHtml(texto?: string): string {
   return (texto ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
 }
 
-// Estado de la integración con ARCA: configuración, prueba de conexión y sincronización de monedas
+// Estado de la integración con ARCA: configuración y prueba de conexión (solo informa)
 async function mostrarEstadoArca() {
   try {
     const estado = await FacturaService.estadoArca();
@@ -124,13 +106,7 @@ async function mostrarEstadoArca() {
       + `Credenciales: ${estado.credencialesConfiguradas ? 'configuradas' : 'faltan'}\n`
       + `Comprobante por defecto: ${TIPOS_COMPROBANTE[estado.tipoComprobantePorDefecto] ?? estado.tipoComprobantePorDefecto}\n\n`
       + `Prueba de conexión: ${prueba.mensaje}${servidores}`;
-    const pregunta = '¿Sincronizar el catálogo de monedas con ARCA?\n'
-      + '(Descarga de ARCA la lista oficial de monedas, unas 50, y las agrega a la base para elegirlas en las facturas. '
-      + 'No modifica ninguna factura. Si no lo necesitás, tocá Cancelar.)';
-    if (confirm(`${mensaje}\n\n${pregunta}`)) {
-      const sync = await FacturaService.sincronizarMonedas();
-      alert(sync.mensaje);
-    }
+    alert(mensaje);
   } catch (err: any) {
     alert(`No se pudo consultar ARCA: ${err.message}`);
   }

@@ -932,11 +932,6 @@ body {
   }
 }
 
-/* Panel de control (totales) */
 .header-acciones { display: flex; gap: 8px; align-items: center; }
-.resumen-panel { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }
-.resumen-item { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; display: flex; flex-direction: column; gap: 4px; }
-.resumen-item span { font-size: 0.85rem; color: #64748b; }
-.resumen-item strong { font-size: 1.15rem; }
 .rechazo-texto { font-size: 0.75rem; color: #b91c1c; max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .iva-resumen { text-align: right; color: #475569; font-size: 0.9rem; margin-top: 8px; }
