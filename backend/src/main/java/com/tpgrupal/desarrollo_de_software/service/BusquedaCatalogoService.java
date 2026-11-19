@@ -20,7 +20,7 @@ import java.util.function.Function;
 
 /**
  * Búsquedas paginadas de los exploradores (productos y clientes): primero un COUNT con los filtros
- * y después solo la página pedida (setFirstResult / setMaxResults). No distinguen mayúsculas ni tildes.
+ * y después solo la página pedida (LIMIT / OFFSET en la consulta). No distinguen mayúsculas ni tildes.
  */
 @Service
 @Transactional(readOnly = true)
@@ -109,10 +109,11 @@ public class BusquedaCatalogoService {
         int totalPaginas = total == 0 ? 1 : (int) Math.ceil(total / (double) tamanioPagina);
         int paginaActual = Math.min(Math.max(pagina, 0), totalPaginas - 1);
 
-        TypedQuery<T> query = em.createQuery(jpqlPagina, tipo);
+        // Solo la página pedida: LIMIT = filas por página, OFFSET = filas de las páginas anteriores
+        TypedQuery<T> query = em.createQuery(jpqlPagina + " LIMIT :limite OFFSET :desde", tipo);
         params.forEach(query::setParameter);
-        query.setFirstResult(paginaActual * tamanioPagina);
-        query.setMaxResults(tamanioPagina);
+        query.setParameter("limite", tamanioPagina);
+        query.setParameter("desde", paginaActual * tamanioPagina);
         List<R> contenido = query.getResultList().stream().map(mapper).toList();
 
         return PageResponse.<R>builder()

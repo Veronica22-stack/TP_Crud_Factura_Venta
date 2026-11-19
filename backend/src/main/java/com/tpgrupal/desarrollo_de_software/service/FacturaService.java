@@ -106,13 +106,16 @@ public class FacturaService {
         if (totalPages == 0) totalPages = 1;
         if (page > totalPages - 1) page = totalPages - 1;
 
-        // 2. Se trae de la base solo la página pedida
+        // 2. Se trae de la base solo la página pedida: LIMIT = filas por página,
+        //    OFFSET = cuántas filas saltear (las de las páginas anteriores)
         TypedQuery<FacturaReporteDTO> query = em.createQuery(
-                SELECT_LISTADO + FROM_LISTADO + filtros + "ORDER BY " + ordenarPor,
+                SELECT_LISTADO + FROM_LISTADO + filtros +
+                "ORDER BY " + ordenarPor + " " +
+                "LIMIT :limite OFFSET :desde",
                 FacturaReporteDTO.class);
         params.forEach(query::setParameter);
-        query.setFirstResult(page * size);
-        query.setMaxResults(size);
+        query.setParameter("limite", size);
+        query.setParameter("desde", page * size);
         List<FacturaReporteDTO> content = query.getResultList();
 
         return PageResponse.<FacturaReporteDTO>builder()
