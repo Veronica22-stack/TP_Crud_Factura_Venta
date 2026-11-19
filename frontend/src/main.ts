@@ -124,7 +124,10 @@ async function mostrarEstadoArca() {
       + `Credenciales: ${estado.credencialesConfiguradas ? 'configuradas' : 'faltan'}\n`
       + `Comprobante por defecto: ${TIPOS_COMPROBANTE[estado.tipoComprobantePorDefecto] ?? estado.tipoComprobantePorDefecto}\n\n`
       + `Prueba de conexión: ${prueba.mensaje}${servidores}`;
-    if (confirm(`${mensaje}\n\n¿Sincronizar el catálogo de monedas con ARCA?`)) {
+    const pregunta = '¿Sincronizar el catálogo de monedas con ARCA?\n'
+      + '(Descarga de ARCA la lista oficial de monedas, unas 50, y las agrega a la base para elegirlas en las facturas. '
+      + 'No modifica ninguna factura. Si no lo necesitás, tocá Cancelar.)';
+    if (confirm(`${mensaje}\n\n${pregunta}`)) {
       const sync = await FacturaService.sincronizarMonedas();
       alert(sync.mensaje);
     }
@@ -287,6 +290,12 @@ function aplicarFiltros() {
     return;
   }
   const numVal = inputNumero.value.trim();
+  // Si el texto no es un número válido (por ejemplo solo "-"), el input lo deja vacío pero marca badInput
+  if (inputNumero.validity.badInput || (numVal && !/^\d+$/.test(numVal)) || (numVal && parseInt(numVal, 10) < 1)) {
+    alert('El número de factura debe ser un número entero mayor a cero.');
+    inputNumero.focus();
+    return;
+  }
   state.filtros.numero = numVal ? parseInt(numVal, 10) : undefined;
   state.filtros.cliente = inputCliente.value.trim() || undefined;
   state.filtros.condicionIva = selectCondicionIva.value || undefined;
@@ -375,6 +384,10 @@ btnNuevaFactura.addEventListener('click', () => {
 });
 
 btnBuscar.addEventListener('click', aplicarFiltros);
+// En el número de factura no se pueden escribir signos ni decimales
+inputNumero.addEventListener('keydown', (e) => {
+  if (['-', '+', 'e', 'E', '.', ','].includes(e.key)) e.preventDefault();
+});
 if (btnEstadoArca) btnEstadoArca.addEventListener('click', mostrarEstadoArca);
 
 // Ordenar y cantidad por página: vuelven a la primera página

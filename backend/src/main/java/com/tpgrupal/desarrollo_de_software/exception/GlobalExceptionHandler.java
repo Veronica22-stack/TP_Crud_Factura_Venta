@@ -43,8 +43,29 @@ public class GlobalExceptionHandler {
         body.put("error", "Conflict");
         body.put("message", ex instanceof DuplicateResourceException
                 ? ex.getMessage()
-                : "Ya existe una factura con ese número. Vuelva a intentar.");
+                : explicarErrorBase(ex));
         return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+    }
+
+    // La base rechazó el dato: se informa la causa real (no siempre es un número repetido)
+    private static String explicarErrorBase(Exception ex) {
+        Throwable causa = ex;
+        while (causa.getCause() != null && causa.getCause() != causa) causa = causa.getCause();
+        String detalle = causa.getMessage() != null ? causa.getMessage() : ex.getMessage();
+        String m = detalle == null ? "" : detalle.toLowerCase();
+        System.err.println("Error de integridad de la base: " + detalle);
+        if (m.contains("duplicate entry") && m.contains("numero")) {
+            return "Ya existe una factura con ese número. Vuelva a intentar.";
+        }
+        if (m.contains("cannot be null")) {
+            java.util.regex.Matcher col = java.util.regex.Pattern.compile("column '([^']+)'").matcher(detalle);
+            String columna = col.find() ? col.group(1) : "desconocido";
+            return "Falta un dato obligatorio para guardar (" + columna + ").";
+        }
+        if (m.contains("foreign key")) {
+            return "Uno de los datos elegidos no existe en la base (cliente, punto de venta, moneda o producto).";
+        }
+        return "La base de datos rechazó la operación: " + detalle;
     }
 
     @ExceptionHandler(FacturaConCaeException.class)

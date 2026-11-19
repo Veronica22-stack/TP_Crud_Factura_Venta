@@ -195,6 +195,9 @@ public class FacturaService {
 
         StringBuilder jpql = new StringBuilder();
 
+        if (numero != null && numero <= 0) {
+            throw new IllegalArgumentException("El número de factura debe ser mayor a cero.");
+        }
         if (numero != null) {
             jpql.append("AND f.numero = :numero ");
             params.put("numero", numero);
