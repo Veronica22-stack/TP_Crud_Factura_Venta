@@ -447,11 +447,12 @@ INSERT INTO factura_venta_detalle (id, factura_venta_id, lista_precio_articulo_i
 -- ---------------------------------------------------------------------
 -- 4) VERIFICACION RAPIDA (deberia devolver 12 facturas: 10 EMITIDA, 2 ANULADA)
 -- ---------------------------------------------------------------------
-SELECT f.id, f.numero, DATE(f.fecha_emision) AS fecha, c.denominacion AS cliente, ci.denominacion AS condicion_iva,
-       pv.descripcion AS punto_venta, f.estado, f.importe_total, COUNT(d.id) AS items
+-- La cantidad de items sale de una subconsulta: una fila por factura, sin GROUP BY
+SELECT f.id, f.numero, DATE(f.fecha_emision) AS fecha, COALESCE(c.denominacion, 'Consumidor Final') AS cliente,
+       ci.denominacion AS condicion_iva, pv.descripcion AS punto_venta, f.estado, f.importe_total,
+       (SELECT COUNT(*) FROM factura_venta_detalle d WHERE d.factura_venta_id = f.id) AS items
 FROM factura_venta f
-JOIN cliente c ON c.id = f.cliente_id
+LEFT JOIN cliente c ON c.id = f.cliente_id
 JOIN condicion_iva ci ON ci.id = f.condicion_iva
 JOIN punto_venta pv ON pv.id = f.punto_venta_id
-LEFT JOIN factura_venta_detalle d ON d.factura_venta_id = f.id
-GROUP BY f.id ORDER BY f.numero;
+ORDER BY f.numero;
