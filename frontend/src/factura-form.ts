@@ -475,6 +475,9 @@ function marcarConsumidorFinal(marcado: boolean): void {
   chkConsumidorFinal.checked = marcado;
   clienteTexto.disabled = marcado;
   btnAbrirExplorer.disabled = marcado;
+  // Sin cliente la condición de IVA es siempre Consumidor Final: queda fija hasta que se elija un cliente
+  condicionIvaSelect.disabled = marcado;
+  condicionIvaSelect.title = marcado ? 'Sin cliente, la condición de IVA es Consumidor Final' : '';
 
   if (marcado) {
     clienteSelect.value = '';
