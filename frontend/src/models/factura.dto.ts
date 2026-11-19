@@ -7,6 +7,10 @@ export interface FacturaDetalleReporteDTO {
   cantidad: number;
   precioUnitario: number;
   subtotal: number;
+  codigo?: string;
+  porcentajeBonificacion?: number;
+  importeNeto?: number;
+  importeIva?: number;
 }
 
 export interface FacturaReporteDTO {
@@ -26,6 +30,41 @@ export interface FacturaReporteDTO {
   cae?: string;
   caeFechaVencimiento?: string;
   resultadoAfip?: string;
+  motivoRechazo?: string;
+  nroComprobanteAfip?: number;
+  tipoComprobante?: number;      // 1 = A, 6 = B, 11 = C
+  clienteCuit?: string;
+  condicionIvaId?: number;
+  tipoMonedaId?: number;
+  monedaCodigoAfip?: string;
+  monedaDenominacion?: string;
+  importeNetoGravado?: number;
+  importeIva?: number;
+}
+
+// Totales del panel (GET /api/facturas/resumen)
+export interface ResumenFacturacionDTO {
+  totalFacturado: number;
+  vigentes: number;
+  conCae: number;
+  pendientes: number;
+  anuladas: number;
+  ultimasFacturas: FacturaReporteDTO[];
+}
+
+export interface MonedaDTO {
+  id: number;
+  codigoAfip: string;
+  codigoIso: string;
+  denominacion: string;
+  simbolo: string;
+}
+
+export interface TipoComprobanteDTO {
+  codigo: number;
+  nombre: string;
+  descripcion: string;
+  porDefecto: boolean;
 }
 
 export interface FacturaDetalleRequestDTO {
@@ -59,6 +98,7 @@ export interface FacturaRequestDTO {
   estado?: string;
   observaciones?: string;
   importeTotal?: number;
+  cbteTipo?: number;             // 1 = A, 6 = B, 11 = C
   detalles: FacturaDetalleRequestDTO[];
 }
 
@@ -71,6 +111,7 @@ export interface FacturaFiltrosDTO {
   estado?: string;
   montoMinimo?: number;
   listaPrecioId?: number;
+  clienteId?: number;
   orden?: string;
   page?: number;
   size?: number;
@@ -86,6 +127,7 @@ export interface FacturaVentaDetalleDTO {
   productoDescripcion: string;
   cantidad: number;
   precioUnitario: number;
+  porcentajeBonificacion?: number;
   subtotal?: number;
 }
 
@@ -102,6 +144,8 @@ export interface FacturaVentaDTO {
   importeTotal?: number;
   estado?: string;
   observaciones?: string;
+  tipoComprobante?: number;
+  tipoMonedaId?: number;
   detalles: FacturaVentaDetalleDTO[];
 }
 

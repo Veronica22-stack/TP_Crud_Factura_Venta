@@ -10,6 +10,7 @@ import com.tpgrupal.desarrollo_de_software.repository.*;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.TypedQuery;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,22 +37,29 @@ public class FacturaService {
     private final PuntoVentaRepository puntoVentaRepository;
     private final CondicionIvaRepository condicionIvaRepository;
     private final ListaPrecioArticuloRepository listaPrecioArticuloRepository;
+    private final FacturacionAfipService facturacionAfipService;
+
+    // Si es true, al crear una factura se pide el CAE en el mismo momento
+    @Value("${afip.auto-emitir:false}")
+    private boolean autoEmitir;
 
     public FacturaService(FacturaVentaRepository facturaVentaRepository,
                           ClienteRepository clienteRepository,
                           PuntoVentaRepository puntoVentaRepository,
                           CondicionIvaRepository condicionIvaRepository,
-                          ListaPrecioArticuloRepository listaPrecioArticuloRepository) {
+                          ListaPrecioArticuloRepository listaPrecioArticuloRepository,
+                          FacturacionAfipService facturacionAfipService) {
         this.facturaVentaRepository = facturaVentaRepository;
         this.clienteRepository = clienteRepository;
         this.puntoVentaRepository = puntoVentaRepository;
         this.condicionIvaRepository = condicionIvaRepository;
         this.listaPrecioArticuloRepository = listaPrecioArticuloRepository;
+        this.facturacionAfipService = facturacionAfipService;
     }
 
     // Columnas por las que se puede ordenar el listado (se arma con una lista cerrada
     // para no meter en la consulta texto que venga del navegador)
-    private static final Map<String, String> ORDENES = Map.of(
+    private static final Map<String, String> ORDENES = new java.util.TreeMap<>(Map.of(
             "fecha_desc", "f.fechaEmision DESC, f.numero DESC",
             "fecha_asc", "f.fechaEmision ASC, f.numero ASC",
             "numero_desc", "f.numero DESC",
@@ -60,13 +68,15 @@ public class FacturaService {
             "importe_asc", "f.importeTotal ASC, f.numero ASC",
             "cliente_asc", "COALESCE(c.denominacion, 'Consumidor Final') ASC, f.numero DESC",
             "cliente_desc", "COALESCE(c.denominacion, 'Consumidor Final') DESC, f.numero DESC"
-    );
+    ));
+    private static final int TAMANIO_MAXIMO_PAGINA = 100;
     private static final String ORDEN_POR_DEFECTO = "fecha_desc";
 
     @Transactional(readOnly = true)
     public PageResponse<FacturaReporteDTO> buscarFacturasPaginadas(
             Long numero,
             String cliente,
+            Long clienteId,
             String condicionIva,
             Date fechaDesde,
             Date fechaHasta,
@@ -78,10 +88,12 @@ public class FacturaService {
             int size) {
 
         if (size < 1) size = 5;
+        if (size > TAMANIO_MAXIMO_PAGINA) size = TAMANIO_MAXIMO_PAGINA;
         if (page < 0) page = 0;
+        String ordenarPor = ordenJpql(orden);
 
         Map<String, Object> params = new HashMap<>();
-        String filtros = armarFiltros(numero, cliente, condicionIva, fechaDesde, fechaHasta,
+        String filtros = armarFiltros(numero, cliente, clienteId, condicionIva, fechaDesde, fechaHasta,
                 estado, montoMinimo, listaPrecioId, params);
 
         // 1. COUNT: cuántas facturas cumplen los filtros (sin traerlas)
@@ -96,7 +108,7 @@ public class FacturaService {
 
         // 2. Se trae de la base solo la página pedida
         TypedQuery<FacturaReporteDTO> query = em.createQuery(
-                SELECT_LISTADO + FROM_LISTADO + filtros + "ORDER BY " + ordenJpql(orden),
+                SELECT_LISTADO + FROM_LISTADO + filtros + "ORDER BY " + ordenarPor,
                 FacturaReporteDTO.class);
         params.forEach(query::setParameter);
         query.setFirstResult(page * size);
@@ -119,6 +131,7 @@ public class FacturaService {
     public List<FacturaReporteDTO> buscarFacturasFiltradas(
             Long numero,
             String cliente,
+            Long clienteId,
             String condicionIva,
             Date fechaDesde,
             Date fechaHasta,
@@ -128,7 +141,7 @@ public class FacturaService {
             String orden) {
 
         Map<String, Object> params = new HashMap<>();
-        String filtros = armarFiltros(numero, cliente, condicionIva, fechaDesde, fechaHasta,
+        String filtros = armarFiltros(numero, cliente, clienteId, condicionIva, fechaDesde, fechaHasta,
                 estado, montoMinimo, listaPrecioId, params);
 
         TypedQuery<FacturaReporteDTO> query = em.createQuery(
@@ -145,7 +158,8 @@ public class FacturaService {
             "SELECT new com.tpgrupal.desarrollo_de_software.dto.FacturaReporteDTO(" +
             "  f.id, f.numero, f.fechaEmision, COALESCE(c.denominacion, 'Consumidor Final'), " +
             "  ci.denominacion, pv.descripcion, f.importeTotal, " +
-            "  (SELECT COUNT(d) FROM FacturaVentaDetalle d WHERE d.factura = f), f.estado, f.cae" +
+            "  (SELECT COUNT(d) FROM FacturaVentaDetalle d WHERE d.factura = f), f.estado, f.cae, " +
+            "  f.caeFechaVencimiento, f.resultadoAfip, f.motivoRechazo, f.tipoComprobante" +
             ") ";
 
     private static final String FROM_LISTADO =
@@ -155,15 +169,22 @@ public class FacturaService {
             "JOIN f.puntoVenta pv " +
             "WHERE 1=1 ";
 
+    // Un orden que no está en la lista responde 400 (no se arma la consulta con texto del navegador)
     private String ordenJpql(String orden) {
-        String clave = orden != null ? orden.trim().toLowerCase() : ORDEN_POR_DEFECTO;
-        return ORDENES.getOrDefault(clave, ORDENES.get(ORDEN_POR_DEFECTO)) + ", f.id DESC";
+        String clave = orden == null || orden.isBlank() ? ORDEN_POR_DEFECTO : orden.trim().toLowerCase(Locale.ROOT);
+        String clausula = ORDENES.get(clave);
+        if (clausula == null) {
+            throw new IllegalArgumentException("Orden no válido: '" + orden + "'. Valores posibles: "
+                    + String.join(", ", ORDENES.keySet()) + ".");
+        }
+        return clausula + ", f.id DESC";
     }
 
     // Arma el WHERE con los filtros que vinieron (lo usan el COUNT y la consulta de la página)
     private String armarFiltros(
             Long numero,
             String cliente,
+            Long clienteId,
             String condicionIva,
             Date fechaDesde,
             Date fechaHasta,
@@ -178,8 +199,20 @@ public class FacturaService {
             jpql.append("AND f.numero = :numero ");
             params.put("numero", numero);
         }
+        // Cliente elegido en el buscador: filtro exacto por id
+        if (clienteId != null) {
+            jpql.append("AND c.id = :clienteId ");
+            params.put("clienteId", clienteId);
+        }
+        // Cliente: parte del nombre o del CUIT (con o sin guiones). Sin cliente = "Consumidor Final".
         if (cliente != null && !cliente.trim().isEmpty()) {
-            jpql.append("AND LOWER(COALESCE(c.denominacion, 'Consumidor Final')) LIKE LOWER(:cliente) ");
+            String digitos = cliente.replaceAll("\\D", "");
+            jpql.append("AND (LOWER(COALESCE(c.denominacion, 'Consumidor Final')) LIKE LOWER(:cliente) ");
+            if (!digitos.isEmpty()) {
+                jpql.append("OR REPLACE(COALESCE(c.cuitCuil, ''), '-', '') LIKE :clienteCuit ");
+                params.put("clienteCuit", "%" + digitos + "%");
+            }
+            jpql.append(") ");
             params.put("cliente", "%" + cliente.trim() + "%");
         }
         if (condicionIva != null && !condicionIva.trim().isEmpty()) {
@@ -196,7 +229,7 @@ public class FacturaService {
         }
         if (estado != null && !estado.trim().isEmpty()) {
             jpql.append("AND f.estado = :estado ");
-            params.put("estado", estado);
+            params.put("estado", estado.trim().toUpperCase(Locale.ROOT));
         }
         if (montoMinimo != null) {
             jpql.append("AND f.importeTotal >= :montoMinimo ");
@@ -229,6 +262,9 @@ public class FacturaService {
                         .productoDescripcion(d.getDescripcion())
                         .cantidad(d.getCantidad())
                         .precioUnitario(d.getPrecioUnitario())
+                        .porcentajeBonificacion(d.getPorcentajeBonificacion())
+                        .importeNeto(d.getImporteNeto())
+                        .importeIva(d.getImporteIva())
                         .subtotal(d.getImporteSubtotal())
                         .build())
                 .collect(Collectors.toList());
@@ -247,6 +283,8 @@ public class FacturaService {
                 .estado(f.getEstado())
                 .observaciones(f.getObservaciones())
                 .importeTotal(f.getImporteTotal())
+                .cbteTipo(f.getTipoComprobante())
+                .tipoMonedaId(f.getTipoMoneda() != null ? f.getTipoMoneda().getId() : null)
                 .detalles(detallesDto)
                 .build();
     }
@@ -281,27 +319,35 @@ public class FacturaService {
         f.setCliente(resolverClienteFactura(dto.getClienteId(), f.getCondicionIva()));
 
         f.setTipoMoneda(resolverTipoMoneda(dto.getTipoMonedaId()));
+        f.setTipoComprobante(resolverTipoComprobante(dto.getCbteTipo()));
+        FacturacionAfipService.validarReceptor(f, f.getTipoComprobante());
 
         Usuario usuarioAudit = resolverUsuarioAuditoria();
         f.setUsuarioCarga(usuarioAudit);
         f.setUsuarioModificacion(usuarioAudit);
 
-        // Detalles
-        double totalCalculado = 0.0;
-        if (dto.getDetalles() != null) {
-            for (FacturaDetalleRequestDTO detDto : dto.getDetalles()) {
-                FacturaVentaDetalle det = crearDetalle(detDto, dto.getListaPrecioId());
-                f.addDetalle(det);
-                totalCalculado += det.getImporteSubtotal();
-            }
+        // Detalles: el precio sale de la lista; subtotal, neto e IVA los calcula calcularTotales()
+        for (FacturaDetalleRequestDTO detDto : dto.getDetalles()) {
+            f.addDetalle(crearDetalle(detDto, dto.getListaPrecioId()));
         }
-
-        f.setImporteTotal(totalCalculado > 0 ? totalCalculado : (dto.getImporteTotal() != null ? dto.getImporteTotal() : 0.0));
+        f.calcularTotales();
         f.setImporteCobrado(f.getImporteTotal());
         f.setImporteSaldo(0.0);
 
         facturaVentaRepository.save(f);
         em.flush();
+
+        // Opcional (afip.auto-emitir=true): se pide el CAE al guardar. Si falla, la factura queda guardada
+        // sin CAE y con el motivo, para reintentar desde el listado.
+        if (autoEmitir && facturacionAfipService.modo() != FacturacionAfipService.Modo.DESHABILITADO) {
+            try {
+                facturacionAfipService.emitir(f, null);
+            } catch (RuntimeException e) {
+                f.setMotivoRechazo(e.getMessage());
+            }
+            facturaVentaRepository.save(f);
+            em.flush();
+        }
 
         return convertirAInformeDetallado(f);
     }
@@ -309,8 +355,13 @@ public class FacturaService {
     public FacturaReporteDTO actualizarFactura(Long id, FacturaRequestDTO dto) {
         FacturaVenta f = buscarFacturaPorIdONumero(id);
 
-        // Una factura informada a ARCA (con CAE) ya no se puede editar
+        // Una factura informada a ARCA (con CAE) ya no se puede editar: solo anularla (baja lógica),
+        // con observaciones como motivo de la anulación
         if (tieneCae(f)) {
+            boolean anulando = dto.getEstado() != null && "ANULADA".equalsIgnoreCase(dto.getEstado().trim());
+            if (anulando) {
+                return actualizarEstado(f.getId(), "ANULADA", dto.getObservaciones());
+            }
             throw new FacturaConCaeException("La factura " + f.getNumero()
                     + " ya fue informada a ARCA (CAE " + f.getCae() + ") y no se puede editar. Solo se puede anular.");
         }
@@ -333,6 +384,12 @@ public class FacturaService {
         if (dto.getTipoMonedaId() != null) {
             f.setTipoMoneda(resolverTipoMoneda(dto.getTipoMonedaId()));
         }
+        if (dto.getCbteTipo() != null) {
+            f.setTipoComprobante(resolverTipoComprobante(dto.getCbteTipo()));
+        }
+        if (f.getTipoComprobante() != null) {
+            FacturacionAfipService.validarReceptor(f, f.getTipoComprobante());
+        }
         if (dto.getFechaEmision() != null) {
             f.setFechaEmision(dto.getFechaEmision());
         }
@@ -348,17 +405,16 @@ public class FacturaService {
         }
         
         // Solo se reemplazan los ítems si el cliente los mandó
-        if (dto.getDetalles() != null && !dto.getDetalles().isEmpty()) {
+        if (edicionCompleta) {
             f.getDetalles().clear();
-            double total = 0.0;
             for (FacturaDetalleRequestDTO detDto : dto.getDetalles()) {
-                FacturaVentaDetalle det = crearDetalle(detDto, dto.getListaPrecioId());
-                f.addDetalle(det);
-                total += det.getImporteSubtotal();
+                f.addDetalle(crearDetalle(detDto, dto.getListaPrecioId()));
             }
-            f.setImporteTotal(total);
-            f.setImporteCobrado(total);
         }
+        // Se recalcula siempre: cambiar el tipo de comprobante cambia el neto y el IVA de cada renglón
+        f.calcularTotales();
+        f.setImporteCobrado(f.getImporteTotal());
+        f.setImporteSaldo(0.0);
         
         f.setFechaModificacion(new Date());
         facturaVentaRepository.save(f);
@@ -389,6 +445,40 @@ public class FacturaService {
         facturaVentaRepository.save(f);
         em.flush();
         return convertirAInformeDetallado(f);
+    }
+
+    // Pide el CAE a ARCA de una factura guardada. El rechazo de ARCA no es un error HTTP:
+    // la factura queda con resultadoAfip = R y el motivo, y se devuelve igual.
+    public FacturaReporteDTO emitirCae(Long idOrNumero, Integer tipoComprobante) {
+        FacturaVenta f = buscarFacturaPorIdONumero(idOrNumero);
+        facturacionAfipService.emitir(f, tipoComprobante);
+        facturaVentaRepository.save(f);
+        em.flush();
+        return convertirAInformeDetallado(f);
+    }
+
+    // Totales del panel de control, calculados en la base
+    @Transactional(readOnly = true)
+    public ResumenFacturacionDTO obtenerResumen(int cantidadUltimas) {
+        Double total = em.createQuery(
+                "SELECT COALESCE(SUM(f.importeTotal), 0) FROM FacturaVenta f WHERE f.estado <> 'ANULADA'",
+                Double.class).getSingleResult();
+        long vigentes = contar("f.estado <> 'ANULADA'");
+        long conCae = contar("f.estado <> 'ANULADA' AND f.cae IS NOT NULL AND f.cae <> ''");
+        long anuladas = contar("f.estado = 'ANULADA'");
+
+        List<FacturaReporteDTO> ultimas = em.createQuery(
+                        SELECT_LISTADO + FROM_LISTADO + "ORDER BY f.id DESC", FacturaReporteDTO.class)
+                .setMaxResults(Math.min(Math.max(cantidadUltimas, 1), 20))
+                .getResultList();
+
+        return new ResumenFacturacionDTO(total == null ? 0 : total, vigentes, conCae, vigentes - conCae,
+                anuladas, ultimas);
+    }
+
+    private long contar(String condicion) {
+        return em.createQuery("SELECT COUNT(f) FROM FacturaVenta f WHERE " + condicion, Long.class)
+                .getSingleResult();
     }
 
     public void anularFactura(Long idOrNumero) {
@@ -445,7 +535,12 @@ public class FacturaService {
                 .orElseThrow(() -> new ResourceNotFoundException("Factura no encontrada con identificador: " + idOrNumero));
     }
     
-    private static final double ALICUOTA_IVA = 1.21; // IVA 21% fijo
+    // 1 = Factura A, 6 = Factura B, 11 = Factura C (sin dato: el de afip.cbte.tipo)
+    private int resolverTipoComprobante(Integer tipo) {
+        int resultado = tipo != null && tipo > 0 ? tipo : facturacionAfipService.tipoComprobantePorDefecto();
+        FacturacionAfipService.validarTipoComprobante(resultado);
+        return resultado;
+    }
     
     private FacturaVentaDetalle crearDetalle(FacturaDetalleRequestDTO detDto, Long listaPrecioId) {
         // Si el ítem trae su propio precio de lista (listaPrecioArticuloId), se usa ese:
@@ -456,27 +551,44 @@ public class FacturaService {
                             "No existe el precio de lista con id: " + detDto.getListaPrecioArticuloId()))
                 : resolverListaPrecioArticulo(detDto.getArticuloId(), listaPrecioId);
         
-        double cant = detDto.getCantidad() != null && detDto.getCantidad() > 0 ? detDto.getCantidad() : 1.0;
-        double precio = lpa.getPrecioVenta();
-        
-        double subtotal = cant * precio;
-        double neto = Math.round((subtotal / ALICUOTA_IVA) * 100.0) / 100.0;
-        double iva = Math.round((subtotal - neto) * 100.0) / 100.0;
-        
+        String nombre = lpa.getArticulo().getDenominacion();
+        double cant = detDto.getCantidad() != null ? detDto.getCantidad() : 1.0;
+        if (!(cant > 0) || Double.isInfinite(cant)) {
+            throw new IllegalArgumentException("La cantidad de " + nombre + " debe ser mayor a cero.");
+        }
+        if (cant != Math.rint(cant)) {
+            throw new IllegalArgumentException("La cantidad de " + nombre + " debe ser un número entero.");
+        }
+        double bonificacion = detDto.getPorcentajeBonificacion() != null ? detDto.getPorcentajeBonificacion() : 0.0;
+        if (Double.isNaN(bonificacion) || bonificacion < 0 || bonificacion > 100) {
+            throw new IllegalArgumentException("La bonificación de " + nombre + " debe estar entre 0 y 100.");
+        }
+        String descripcion = detDto.getDescripcion() != null && !detDto.getDescripcion().isBlank()
+                ? detDto.getDescripcion().trim() : nombre;
+        if (descripcion.length() > 255) {
+            throw new IllegalArgumentException("La descripción de " + nombre + " no puede superar 255 caracteres.");
+        }
+
         FacturaVentaDetalle det = new FacturaVentaDetalle();
-        det.setDescripcion(lpa.getArticulo().getDenominacion());
+        det.setDescripcion(descripcion);
         det.setCantidad(cant);
-        det.setPrecioUnitario(precio);
-        det.setPorcentajeBonificacion(0.0);
-        det.setImporteNeto(neto);
-        det.setImporteIva(iva);
-        det.setImporteSubtotal(subtotal);
+        det.setPrecioUnitario(lpa.getPrecioVenta()); // el precio lo pone el backend, desde la lista
+        det.setPorcentajeBonificacion(bonificacion);
         det.setListaPrecioArticulo(lpa);
         return det;
     }
     
     private FacturaReporteDTO convertirAInformeDetallado(FacturaVenta f) {
         List<FacturaDetalleReporteDTO> detallesDTO = new ArrayList<>();
+        double netoGravado = 0, ivaTotal = 0;
+        if (f.getDetalles() != null) {
+            for (FacturaVentaDetalle d : f.getDetalles()) {
+                netoGravado += d.getImporteNeto();
+                ivaTotal += d.getImporteIva();
+            }
+        }
+        netoGravado = Math.round(netoGravado * 100.0) / 100.0;
+        ivaTotal = Math.round(ivaTotal * 100.0) / 100.0;
         Long listaPrecioId = null;
         if (f.getDetalles() != null) {
             for (FacturaVentaDetalle d : f.getDetalles()) {
@@ -491,6 +603,11 @@ public class FacturaService {
                         .cantidad(d.getCantidad())
                         .precioUnitario(d.getPrecioUnitario())
                         .subtotal(d.getImporteSubtotal())
+                        .codigo(d.getListaPrecioArticulo() != null && d.getListaPrecioArticulo().getArticulo() != null
+                                ? d.getListaPrecioArticulo().getArticulo().getCodigo() : null)
+                        .porcentajeBonificacion(d.getPorcentajeBonificacion())
+                        .importeNeto(d.getImporteNeto())
+                        .importeIva(d.getImporteIva())
                         .build());
                 
                 // La lista de la factura es la de sus ítems
@@ -520,6 +637,18 @@ public class FacturaService {
                 .resultadoAfip(f.getResultadoAfip())
                 .nroComprobanteAfip(f.getNroComprobanteAfip())
                 .tipoComprobanteAfip(f.getTipoComprobanteAfip())
+                .motivoRechazo(f.getMotivoRechazo())
+                .tipoComprobante(f.getTipoComprobante())
+                .clienteCuit(f.getCliente() != null ? f.getCliente().getCuitCuil() : null)
+                .condicionIvaId(f.getCondicionIva() != null ? f.getCondicionIva().getId() : null)
+                .puntoVentaId(f.getPuntoVenta() != null ? f.getPuntoVenta().getId() : null)
+                .puntoVentaNumero(f.getPuntoVenta() != null ? f.getPuntoVenta().getNumero() : null)
+                .tipoMonedaId(f.getTipoMoneda() != null ? f.getTipoMoneda().getId() : null)
+                .monedaCodigoAfip(f.getTipoMoneda() != null ? f.getTipoMoneda().getCodigoAfip() : null)
+                .monedaDenominacion(f.getTipoMoneda() != null ? f.getTipoMoneda().getDenominacion() : null)
+                .importeNetoGravado(netoGravado)
+                .importeIva(ivaTotal)
+                .fechaAnulacion(f.getFechaAnulacion())
                 .build();
     }
     

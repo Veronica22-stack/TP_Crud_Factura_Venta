@@ -2,13 +2,38 @@ import {
   FacturaReporteDTO,
   FacturaRequestDTO,
   FacturaFiltrosDTO,
-  OpcionesComboDTO
+  OpcionesComboDTO,
+  ResumenFacturacionDTO,
+  MonedaDTO,
+  TipoComprobanteDTO
 } from '../models/factura.dto';
 import { PageResponse } from '../types/page';
 import { ListaPrecioArticuloDTO } from '../types/listaPrecioArticulo';
 import { authFetch, urlConToken } from './authService';
 
 const API_BASE_URL = 'http://localhost:8080/api/facturas';
+const API_URL = 'http://localhost:8080/api';
+
+// Filtros del listado como parámetros de la URL (los usan el listado y las exportaciones)
+function paramsFiltros(filtros: FacturaFiltrosDTO): URLSearchParams {
+  const params = new URLSearchParams();
+  if (filtros.numero) params.append('numero', filtros.numero.toString());
+  if (filtros.cliente) params.append('cliente', filtros.cliente);
+  if (filtros.clienteId) params.append('clienteId', filtros.clienteId.toString());
+  if (filtros.condicionIva) params.append('condicionIva', filtros.condicionIva);
+  if (filtros.fechaDesde) params.append('fechaDesde', filtros.fechaDesde);
+  if (filtros.fechaHasta) params.append('fechaHasta', filtros.fechaHasta);
+  if (filtros.estado) params.append('estado', filtros.estado);
+  if (filtros.montoMinimo) params.append('montoMinimo', filtros.montoMinimo.toString());
+  if (filtros.listaPrecioId) params.append('listaPrecioId', filtros.listaPrecioId.toString());
+  if (filtros.orden) params.append('orden', filtros.orden);
+  return params;
+}
+
+async function leerError(res: Response, porDefecto: string): Promise<Error> {
+  const err = await res.json().catch(() => ({ message: res.statusText }));
+  return new Error(err.message || porDefecto);
+}
 
 export class FacturaService {
   /**
@@ -22,6 +47,9 @@ export class FacturaService {
     }
     if (filtros.cliente) {
       params.append('cliente', filtros.cliente);
+    }
+    if (filtros.clienteId) {
+      params.append('clienteId', filtros.clienteId.toString());
     }
     if (filtros.condicionIva) {
       params.append('condicionIva', filtros.condicionIva);
@@ -120,27 +148,62 @@ export class FacturaService {
   }
 
   /**
-   * Solicita el CAE a AFIP para una factura ya creada
+   * Solicita el CAE a ARCA para una factura ya creada (real o simulado según afip.modo).
+   * Si ARCA la rechaza, la factura queda guardada con el motivo y se informa como error.
    */
-  static async obtenerCae(id: number): Promise<{ cae: string; vencimiento: string }> {
-    const res = await authFetch(`${API_BASE_URL}/emitir-afip`, {
+  static async obtenerCae(id: number, tipoComprobante?: number): Promise<FacturaReporteDTO> {
+    const res = await authFetch(`${API_BASE_URL}/${id}/emitir`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id })
+      body: JSON.stringify(tipoComprobante ? { tipoComprobante } : {})
     });
+    if (!res.ok) throw await leerError(res, 'No se pudo obtener el CAE');
 
-    const texto = await res.text();
-    let data: any = null;
-    try { data = JSON.parse(texto); } catch { /* respuesta de texto plano */ }
-
-    if (!res.ok) {
-      const obs = data?.feDetResp?.FECAEDetResponse?.[0]?.Observaciones?.Obs;
-      const detalle = Array.isArray(obs) ? obs.map((o: any) => `[${o.Code}] ${o.Msg}`).join(' | ') : '';
-      throw new Error(detalle || data?.message || texto || 'No se pudo obtener el CAE');
+    const factura: FacturaReporteDTO = await res.json();
+    if (!factura.cae) {
+      throw new Error(`ARCA rechazó el comprobante: ${factura.motivoRechazo || 'sin detalle'}`);
     }
+    return factura;
+  }
 
-    const det = data?.feDetResp?.FECAEDetResponse?.[0];
-    return { cae: det?.CAE, vencimiento: det?.CAEFchVto };
+  /**
+   * Totales del panel (total facturado, con CAE, pendientes, anuladas y últimas facturas)
+   */
+  static async obtenerResumen(ultimas = 5): Promise<ResumenFacturacionDTO> {
+    const res = await authFetch(`${API_BASE_URL}/resumen?ultimas=${ultimas}`);
+    if (!res.ok) throw await leerError(res, 'No se pudo obtener el resumen');
+    return res.json();
+  }
+
+  static async listarMonedas(): Promise<MonedaDTO[]> {
+    const res = await authFetch(`${API_URL}/catalogos/monedas`);
+    if (!res.ok) return [];
+    return res.json();
+  }
+
+  static async listarTiposComprobante(): Promise<TipoComprobanteDTO[]> {
+    const res = await authFetch(`${API_URL}/catalogos/tipos-comprobante`);
+    if (!res.ok) return [];
+    return res.json();
+  }
+
+  // --- Integración ARCA ---
+  static async estadoArca(): Promise<any> {
+    const res = await authFetch(`${API_URL}/afip/estado`);
+    if (!res.ok) throw await leerError(res, 'No se pudo consultar el estado de ARCA');
+    return res.json();
+  }
+
+  static async probarConexionArca(): Promise<any> {
+    const res = await authFetch(`${API_URL}/afip/dummy`, { method: 'POST' });
+    if (!res.ok) throw await leerError(res, 'No se pudo probar la conexión con ARCA');
+    return res.json();
+  }
+
+  static async sincronizarMonedas(): Promise<any> {
+    const res = await authFetch(`${API_URL}/afip/monedas/sincronizar`, { method: 'POST' });
+    if (!res.ok) throw await leerError(res, 'No se pudieron sincronizar las monedas');
+    return res.json();
   }
 
   /**
@@ -179,34 +242,21 @@ export class FacturaService {
    * URL para exportación a PDF
    */
   static getExportPdfUrl(filtros: FacturaFiltrosDTO): string {
-    const params = new URLSearchParams();
-    if (filtros.numero) params.append('numero', filtros.numero.toString());
-    if (filtros.cliente) params.append('cliente', filtros.cliente);
-    if (filtros.condicionIva) params.append('condicionIva', filtros.condicionIva);
-    if (filtros.fechaDesde) params.append('fechaDesde', filtros.fechaDesde);
-    if (filtros.fechaHasta) params.append('fechaHasta', filtros.fechaHasta);
-    if (filtros.estado) params.append('estado', filtros.estado);
-    if (filtros.montoMinimo) params.append('montoMinimo', filtros.montoMinimo.toString());
-    if (filtros.listaPrecioId) params.append('listaPrecioId', filtros.listaPrecioId.toString());
-    if (filtros.orden) params.append('orden', filtros.orden);
-    return urlConToken(`${API_BASE_URL}/export/pdf?${params.toString()}`);
+    return urlConToken(`${API_BASE_URL}/export/pdf?${paramsFiltros(filtros).toString()}`);
   }
 
   /**
    * URL para exportación a Excel
    */
   static getExportExcelUrl(filtros: FacturaFiltrosDTO): string {
-    const params = new URLSearchParams();
-    if (filtros.numero) params.append('numero', filtros.numero.toString());
-    if (filtros.cliente) params.append('cliente', filtros.cliente);
-    if (filtros.condicionIva) params.append('condicionIva', filtros.condicionIva);
-    if (filtros.fechaDesde) params.append('fechaDesde', filtros.fechaDesde);
-    if (filtros.fechaHasta) params.append('fechaHasta', filtros.fechaHasta);
-    if (filtros.estado) params.append('estado', filtros.estado);
-    if (filtros.montoMinimo) params.append('montoMinimo', filtros.montoMinimo.toString());
-    if (filtros.listaPrecioId) params.append('listaPrecioId', filtros.listaPrecioId.toString());
-    if (filtros.orden) params.append('orden', filtros.orden);
-    return urlConToken(`${API_BASE_URL}/export/excel?${params.toString()}`);
+    return urlConToken(`${API_BASE_URL}/export/excel?${paramsFiltros(filtros).toString()}`);
+  }
+
+  /**
+   * URL para exportación a texto separado por tabulaciones (.txt)
+   */
+  static getExportTxtUrl(filtros: FacturaFiltrosDTO): string {
+    return urlConToken(`${API_BASE_URL}/export/txt?${paramsFiltros(filtros).toString()}`);
   }
 
   static async listarArticulosPorLista(listaPrecioId: number): Promise<ListaPrecioArticuloDTO[]> {

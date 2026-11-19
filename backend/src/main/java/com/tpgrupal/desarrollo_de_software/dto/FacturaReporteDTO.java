@@ -32,6 +32,19 @@ public class FacturaReporteDTO {
     private String resultadoAfip;
     private Integer nroComprobanteAfip;
     private Integer tipoComprobanteAfip;
+    private String motivoRechazo;
+    // Datos fiscales del detalle
+    private Integer tipoComprobante;      // 1 = A, 6 = B, 11 = C
+    private String clienteCuit;
+    private Long condicionIvaId;
+    private Long puntoVentaId;
+    private Integer puntoVentaNumero;
+    private Long tipoMonedaId;
+    private String monedaCodigoAfip;
+    private String monedaDenominacion;
+    private Double importeNetoGravado;
+    private Double importeIva;
+    private Date fechaAnulacion;
 
     // Constructor que usa la consulta JPQL del listado (SELECT new ...)
     public FacturaReporteDTO(Long id, Long numeroFactura, Date fechaEmision, String clienteDenominacion,
@@ -47,5 +60,18 @@ public class FacturaReporteDTO {
         this.cantidadItems = cantidadItems;
         this.estado = estado;
         this.cae = cae;
+    }
+
+    // Listado con los datos de ARCA (resultado, motivo del rechazo y tipo de comprobante)
+    public FacturaReporteDTO(Long id, Long numeroFactura, Date fechaEmision, String clienteDenominacion,
+                             String condicionIva, String puntoVentaDescripcion, double importeTotal,
+                             long cantidadItems, String estado, String cae, Date caeFechaVencimiento,
+                             String resultadoAfip, String motivoRechazo, Integer tipoComprobante) {
+        this(id, numeroFactura, fechaEmision, clienteDenominacion, condicionIva, puntoVentaDescripcion,
+                importeTotal, cantidadItems, estado, cae);
+        this.caeFechaVencimiento = caeFechaVencimiento;
+        this.resultadoAfip = resultadoAfip;
+        this.motivoRechazo = motivoRechazo;
+        this.tipoComprobante = tipoComprobante;
     }
 }

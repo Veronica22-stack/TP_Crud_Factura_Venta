@@ -39,6 +39,9 @@ const btnBuscar = document.getElementById('btnBuscar') as HTMLButtonElement;
 const btnLimpiar = document.getElementById('btnLimpiar') as HTMLButtonElement;
 const btnExportPdf = document.getElementById('btnExportPdf') as HTMLAnchorElement;
 const btnExportExcel = document.getElementById('btnExportExcel') as HTMLAnchorElement;
+const btnExportTxt = document.getElementById('btnExportTxt') as HTMLAnchorElement;
+const resumenPanel = document.getElementById('resumenPanel') as HTMLElement;
+const btnEstadoArca = document.getElementById('btnEstadoArca') as HTMLButtonElement;
 
 // Modal Explorer de Clientes
 const modalClientes = document.getElementById('modalClientes') as HTMLElement;
@@ -74,6 +77,7 @@ export async function cargarFacturas() {
     renderizarTablaFacturas(data.content);
     renderizarPaginacion(data);
     actualizarEnlacesExportacion();
+    cargarResumen();
   } catch (err: any) {
     tbodyFacturas.innerHTML = `
       <tr>
@@ -83,6 +87,49 @@ export async function cargarFacturas() {
       </tr>
     `;
     paginationInfo.textContent = 'Error al cargar datos.';
+  }
+}
+
+// Panel de control: los totales se calculan en el backend (no se descarga el listado completo)
+async function cargarResumen() {
+  if (!resumenPanel) return;
+  try {
+    const r = await FacturaService.obtenerResumen();
+    resumenPanel.innerHTML = `
+      <div class="resumen-item"><span>Total facturado</span><strong>$ ${formatearMoneda(r.totalFacturado)}</strong></div>
+      <div class="resumen-item"><span>Con CAE</span><strong>${r.conCae}</strong></div>
+      <div class="resumen-item"><span>Pendientes de CAE</span><strong>${r.pendientes}</strong></div>
+      <div class="resumen-item"><span>Anuladas</span><strong>${r.anuladas}</strong></div>
+    `;
+  } catch {
+    resumenPanel.innerHTML = '';
+  }
+}
+
+const TIPOS_COMPROBANTE: Record<number, string> = { 1: 'A', 6: 'B', 11: 'C' };
+
+function escaparHtml(texto?: string): string {
+  return (texto ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
+}
+
+// Estado de la integración con ARCA: configuración, prueba de conexión y sincronización de monedas
+async function mostrarEstadoArca() {
+  try {
+    const estado = await FacturaService.estadoArca();
+    const prueba = await FacturaService.probarConexionArca();
+    const servidores = prueba.servidores
+      ? `\nServidores: app ${prueba.servidores.appServer}, base ${prueba.servidores.dbServer}, auth ${prueba.servidores.authServer}`
+      : '';
+    const mensaje = `${estado.mensaje}\n\nModo: ${estado.modo}\nCUIT: ${estado.cuit || '-'}\n`
+      + `Credenciales: ${estado.credencialesConfiguradas ? 'configuradas' : 'faltan'}\n`
+      + `Comprobante por defecto: ${TIPOS_COMPROBANTE[estado.tipoComprobantePorDefecto] ?? estado.tipoComprobantePorDefecto}\n\n`
+      + `Prueba de conexión: ${prueba.mensaje}${servidores}`;
+    if (confirm(`${mensaje}\n\n¿Sincronizar el catálogo de monedas con ARCA?`)) {
+      const sync = await FacturaService.sincronizarMonedas();
+      alert(sync.mensaje);
+    }
+  } catch (err: any) {
+    alert(`No se pudo consultar ARCA: ${err.message}`);
   }
 }
 
@@ -110,7 +157,9 @@ function renderizarTablaFacturas(facturas: FacturaReporteDTO[]) {
         <td>${f.cantidadItems}</td>
         <td>
           <span class="badge ${badgeClass}">${estado}</span>
+          ${f.tipoComprobante ? `<div class="cae-texto">Factura ${TIPOS_COMPROBANTE[f.tipoComprobante] ?? f.tipoComprobante}</div>` : ''}
           ${f.cae ? `<div class="cae-texto">CAE: ${f.cae}</div>` : ''}
+          ${!f.cae && f.motivoRechazo ? `<div class="rechazo-texto" title="${escaparHtml(f.motivoRechazo)}">Rechazada por ARCA: ${escaparHtml(f.motivoRechazo)}</div>` : ''}
         </td>
         <td class="text-center">
           <div class="actions-cell">
@@ -182,8 +231,7 @@ function renderizarTablaFacturas(facturas: FacturaReporteDTO[]) {
         target.textContent = 'Solicitando...';
         try {
           const r = await FacturaService.obtenerCae(id);
-          const v = r.vencimiento ? `${r.vencimiento.slice(6, 8)}/${r.vencimiento.slice(4, 6)}/${r.vencimiento.slice(0, 4)}` : '-';
-          alert(`CAE obtenido: ${r.cae}\nVencimiento: ${v}`);
+          alert(`CAE obtenido: ${r.cae}\nVencimiento: ${formatearFecha(r.caeFechaVencimiento)}`);
         } catch (err: any) {
           alert(`No se pudo obtener el CAE: ${err.message}`);
         }
@@ -228,6 +276,7 @@ function renderizarPaginacion(data: PageResponse<FacturaReporteDTO>) {
 function actualizarEnlacesExportacion() {
   btnExportPdf.href = FacturaService.getExportPdfUrl(state.filtros);
   btnExportExcel.href = FacturaService.getExportExcelUrl(state.filtros);
+  if (btnExportTxt) btnExportTxt.href = FacturaService.getExportTxtUrl(state.filtros);
 }
 
 // Aplicar filtros desde el formulario
@@ -326,6 +375,7 @@ btnNuevaFactura.addEventListener('click', () => {
 });
 
 btnBuscar.addEventListener('click', aplicarFiltros);
+if (btnEstadoArca) btnEstadoArca.addEventListener('click', mostrarEstadoArca);
 
 // Ordenar y cantidad por página: vuelven a la primera página
 selectOrden.addEventListener('change', () => {

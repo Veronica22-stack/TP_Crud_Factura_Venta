@@ -17,4 +17,6 @@ public class ListaPrecioArticuloDTO {
     private String rubro;
     private Double precioVenta;
     private String listaPrecioNombre;
+    private Long listaPrecioId;
+    private String marca;
 }

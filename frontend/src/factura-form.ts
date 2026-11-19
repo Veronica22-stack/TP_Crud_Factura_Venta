@@ -30,6 +30,9 @@ const fechaEmisionInput = document.getElementById('fechaEmisionInput') as HTMLIn
 const clienteSelect = document.getElementById('clienteSelect') as HTMLSelectElement;
 const clienteTexto = document.getElementById('clienteTexto') as HTMLInputElement;
 const condicionIvaSelect = document.getElementById('condicionIvaSelect') as HTMLSelectElement;
+const tipoComprobanteSelect = document.getElementById('tipoComprobanteSelect') as HTMLSelectElement;
+const monedaSelect = document.getElementById('monedaSelect') as HTMLSelectElement;
+const ivaResumen = document.getElementById('ivaResumen') as HTMLElement;
 const btnAgregarItem = document.getElementById('btnAgregarItem') as HTMLButtonElement;
 const tbodyDetalles = document.getElementById('detallesTableBody') as HTMLTableSectionElement;
 const importeTotalDisplay = document.getElementById('importeTotalDisplay') as HTMLElement;
@@ -108,10 +111,22 @@ function formatearMoneda(monto: number): string {
   }).format(monto);
 }
 
+function redondear(valor: number): number {
+  return Math.round(valor * 100) / 100;
+}
+
+// Igual que el backend: cantidad x precio, menos la bonificación %
 function calcularSubtotal(detalle: FacturaVentaDetalleDTO): number {
   const cantidad = Number(detalle.cantidad) || 0;
   const precioUnitario = Number(detalle.precioUnitario) || 0;
-  return cantidad * precioUnitario;
+  const bonificacion = Number(detalle.porcentajeBonificacion) || 0;
+  return redondear(cantidad * precioUnitario * (1 - bonificacion / 100));
+}
+
+// Factura A y B discriminan el IVA (21% contenido en el subtotal); la C no
+function tipoDiscriminaIva(): boolean {
+  const tipo = parseInt(tipoComprobanteSelect.value, 10);
+  return tipo === 1 || tipo === 6;
 }
 
 function calcularImporteTotal(factura: FacturaVentaDTO): number {
@@ -121,6 +136,17 @@ function calcularImporteTotal(factura: FacturaVentaDTO): number {
 function actualizarImporteTotal(): void {
   const total = detalles.reduce((acc, d) => acc + (d.subtotal ?? calcularSubtotal(d)), 0);
   importeTotalDisplay.textContent = formatearMoneda(total);
+  if (ivaResumen) {
+    if (tipoDiscriminaIva()) {
+      // Mismo cálculo que el backend, renglón por renglón
+      let neto = 0;
+      detalles.forEach(d => { neto += redondear((d.subtotal ?? calcularSubtotal(d)) / 1.21); });
+      neto = redondear(neto);
+      ivaResumen.textContent = `Neto gravado: ${formatearMoneda(neto)} · IVA 21%: ${formatearMoneda(redondear(total - neto))}`;
+    } else {
+      ivaResumen.textContent = 'Factura C: no discrimina IVA.';
+    }
+  }
 }
 
 // Cargar datos en el formulario
@@ -142,6 +168,13 @@ function cargarFacturaEnFormulario(factura: FacturaVentaDTO): void {
     marcarConsumidorFinal(true);
   }
   mostrarClienteSeleccionado();
+
+  if (factura.tipoComprobante) {
+    tipoComprobanteSelect.value = factura.tipoComprobante.toString();
+  }
+  if (factura.tipoMonedaId) {
+    monedaSelect.value = factura.tipoMonedaId.toString();
+  }
 
   if (factura.condicionIvaId) {
     condicionIvaSelect.value = factura.condicionIvaId.toString();
@@ -182,6 +215,7 @@ function leerFacturaDesdeFormulario(): FacturaVentaDTO {
       productoDescripcion: detalle.productoDescripcion,
       cantidad: Number(detalle.cantidad) || 1,
       precioUnitario: Number(detalle.precioUnitario) || 0,
+      porcentajeBonificacion: Number(detalle.porcentajeBonificacion) || 0,
       subtotal: calcularSubtotal(detalle)
     })),
     importeTotal: 0
@@ -223,7 +257,7 @@ function renderizarDetalles(): void {
   if (detalles.length === 0) {
     tbodyDetalles.innerHTML = `
       <tr>
-        <td colspan="7" class="text-center" style="padding: 24px; color: #64748b;">
+        <td colspan="8" class="text-center" style="padding: 24px; color: #64748b;">
           No hay ítems agregados a la factura. Haga clic en "+ Agregar Ítem" para elegir un producto.
         </td>
       </tr>
@@ -251,6 +285,9 @@ function renderizarDetalles(): void {
         <td>
           <input type="text" class="form-control" value="${formatearMoneda(d.precioUnitario)}" readonly>
         </td>
+        <td>
+          <input type="number" min="0" max="100" step="0.01" class="form-control input-bonificacion" data-index="${index}" value="${d.porcentajeBonificacion ?? 0}">
+        </td>
         <td style="font-weight: 600; vertical-align: middle;">
           ${formatearMoneda(d.subtotal ?? calcularSubtotal(d))}
         </td>
@@ -268,18 +305,30 @@ function renderizarDetalles(): void {
     });
   });
 
+  // Cambia la cantidad o la bonificación: se recalcula el subtotal de la fila y el total
+  const actualizarFila = (index: number) => {
+    detalles[index].subtotal = calcularSubtotal(detalles[index]);
+    actualizarImporteTotal();
+    const row = tbodyDetalles.querySelector(`tr[data-index="${index}"]`);
+    const subtotalCell = row?.children[6];
+    if (subtotalCell) subtotalCell.textContent = formatearMoneda(detalles[index].subtotal ?? 0);
+  };
+
   tbodyDetalles.querySelectorAll('.input-cantidad').forEach(input => {
     input.addEventListener('input', (e) => {
       const target = e.target as HTMLInputElement;
       const index = parseInt(target.getAttribute('data-index') || '0', 10);
       detalles[index].cantidad = parseFloat(target.value) || 0;
-      detalles[index].subtotal = calcularSubtotal(detalles[index]);
-      actualizarImporteTotal();
-      const row = tbodyDetalles.querySelector(`tr[data-index="${index}"]`);
-      if (row) {
-        const subtotalCell = row.children[5];
-        if (subtotalCell) subtotalCell.textContent = formatearMoneda(detalles[index].subtotal ?? 0);
-      }
+      actualizarFila(index);
+    });
+  });
+
+  tbodyDetalles.querySelectorAll('.input-bonificacion').forEach(input => {
+    input.addEventListener('input', (e) => {
+      const target = e.target as HTMLInputElement;
+      const index = parseInt(target.getAttribute('data-index') || '0', 10);
+      detalles[index].porcentajeBonificacion = parseFloat(target.value) || 0;
+      actualizarFila(index);
     });
   });
 
@@ -394,7 +443,7 @@ function seleccionarProducto(art: ListaPrecioArticuloDTO): void {
     d.subtotal = calcularSubtotal(d);
   } else {
     // Si el producto ya está en la factura (misma lista), se suma 1 a la cantidad
-    const existente = detalles.find(d => d.listaPrecioArticuloId === art.id);
+    const existente = detalles.find(d => d.listaPrecioArticuloId === art.id && !(Number(d.porcentajeBonificacion) > 0));
     if (existente) {
       existente.cantidad = (Number(existente.cantidad) || 0) + 1;
       existente.subtotal = calcularSubtotal(existente);
@@ -409,6 +458,7 @@ function seleccionarProducto(art: ListaPrecioArticuloDTO): void {
         productoDescripcion: art.denominacion,
         cantidad: 1,
         precioUnitario: art.precioVenta,
+        porcentajeBonificacion: 0,
         subtotal: 0
       };
       nuevo.subtotal = calcularSubtotal(nuevo);
@@ -457,6 +507,20 @@ async function cargarOpciones(): Promise<void> {
 
     // Una factura nueva arranca como Consumidor Final sin cliente (se destilda para elegir uno)
     marcarConsumidorFinal(true);
+
+    // Tipos de comprobante (A, B, C) y monedas
+    const tipos = await FacturaService.listarTiposComprobante();
+    if (tipos.length > 0) {
+      tipoComprobanteSelect.innerHTML = tipos.map(t => `<option value="${t.codigo}" title="${t.descripcion}">${t.nombre}</option>`).join('');
+      const porDefecto = tipos.find(t => t.porDefecto);
+      if (porDefecto) tipoComprobanteSelect.value = porDefecto.codigo.toString();
+    }
+    const monedas = await FacturaService.listarMonedas();
+    if (monedas.length > 0) {
+      monedaSelect.innerHTML = monedas.map(m => `<option value="${m.id}">${m.denominacion} (${m.codigoAfip})</option>`).join('');
+      const pesos = monedas.find(m => m.codigoAfip === 'PES');
+      if (pesos) monedaSelect.value = pesos.id.toString();
+    }
 
   } catch (err) {
     console.warn('No se pudieron cargar opciones desde el backend. Usando valores por defecto.', err);
@@ -513,8 +577,18 @@ async function guardarFactura(e: Event): Promise<void> {
     return;
   }
 
-  if (detalles.some(d => !(Number(d.cantidad) > 0))) {
-    alert('La cantidad de cada ítem debe ser mayor a cero.');
+  if (detalles.some(d => !(Number(d.cantidad) > 0) || !Number.isInteger(Number(d.cantidad)))) {
+    alert('La cantidad de cada ítem debe ser un número entero mayor a cero.');
+    return;
+  }
+
+  if (detalles.some(d => { const b = Number(d.porcentajeBonificacion) || 0; return b < 0 || b > 100; })) {
+    alert('La bonificación de cada ítem debe estar entre 0 y 100.');
+    return;
+  }
+
+  if (tipoComprobanteSelect.value === '1' && chkConsumidorFinal.checked) {
+    alert('La Factura A requiere un cliente con CUIT: no puede emitirse a Consumidor Final.');
     return;
   }
 
@@ -530,6 +604,8 @@ async function guardarFactura(e: Event): Promise<void> {
     condicionIva: facturaDTO.condicionIva,
     puntoVentaId: facturaDTO.puntoVentaId,
     puntoVentaDescripcion: facturaDTO.puntoVentaDescripcion,
+    cbteTipo: parseInt(tipoComprobanteSelect.value, 10) || undefined,
+    tipoMonedaId: parseInt(monedaSelect.value, 10) || undefined,
     detalles: facturaDTO.detalles.map(d => ({
       id: d.id,
       articuloId: d.articuloId,
@@ -537,6 +613,7 @@ async function guardarFactura(e: Event): Promise<void> {
       productoDescripcion: d.productoDescripcion,
       cantidad: d.cantidad,
       precioUnitario: d.precioUnitario,
+      porcentajeBonificacion: d.porcentajeBonificacion,
       subtotal: d.subtotal
     }))
   };
@@ -735,8 +812,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         fechaEmision: factura.fechaEmision,
         clienteId: factura.clienteId,
         clienteDenominacion: factura.clienteDenominacion,
+        condicionIvaId: factura.condicionIvaId,
         condicionIva: factura.condicionIva,
         puntoVentaDescripcion: factura.puntoVentaDescripcion,
+        tipoComprobante: factura.tipoComprobante,
+        tipoMonedaId: factura.tipoMonedaId,
         detalles: (factura.detalles || []).map(d => ({
           id: d.id,
           articuloId: d.articuloId,
@@ -745,6 +825,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           productoDescripcion: d.productoDescripcion,
           cantidad: d.cantidad,
           precioUnitario: d.precioUnitario,
+          porcentajeBonificacion: d.porcentajeBonificacion,
           subtotal: d.subtotal
         }))
       });
@@ -790,6 +871,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   btnAgregarItem.addEventListener('click', agregarItem);
+  tipoComprobanteSelect.addEventListener('change', actualizarImporteTotal);
   facturaForm.addEventListener('submit', guardarFactura);
   btnCancelar.addEventListener('click', () => {
     window.location.href = './index.html';

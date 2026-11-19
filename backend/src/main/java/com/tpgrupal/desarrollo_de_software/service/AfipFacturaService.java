@@ -3,175 +3,250 @@ package com.tpgrupal.desarrollo_de_software.service;
 import java.net.URL;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
 
 import jakarta.xml.ws.BindingProvider;
+import jakarta.xml.ws.WebServiceException;
 
-import com.tpgrupal.desarrollo_de_software.dto.FacturaRequestDTO;
+import com.tpgrupal.desarrollo_de_software.exception.AfipException;
 import com.tpgrupal.desarrollo_de_software.util.AfipHttpUtil;
 
 import ar.gov.afip.wsfe.AlicIva;
 import ar.gov.afip.wsfe.ArrayOfAlicIva;
+import ar.gov.afip.wsfe.ArrayOfErr;
 import ar.gov.afip.wsfe.ArrayOfFECAEDetRequest;
+import ar.gov.afip.wsfe.DummyResponse;
 import ar.gov.afip.wsfe.Err;
 import ar.gov.afip.wsfe.FEAuthRequest;
 import ar.gov.afip.wsfe.FECAECabRequest;
 import ar.gov.afip.wsfe.FECAEDetRequest;
-import ar.gov.afip.wsfe.FECAEDetResponse;
 import ar.gov.afip.wsfe.FECAERequest;
 import ar.gov.afip.wsfe.FECAEResponse;
-import ar.gov.afip.wsfe.Obs;
+import ar.gov.afip.wsfe.FECotizacionResponse;
+import ar.gov.afip.wsfe.FERecuperaLastCbteResponse;
+import ar.gov.afip.wsfe.Moneda;
+import ar.gov.afip.wsfe.MonedaResponse;
 import ar.gov.afip.wsfe.Service;
 import ar.gov.afip.wsfe.ServiceSoap;
 
+/**
+ * Cliente de WSFEv1 (facturación electrónica de ARCA) con los stubs JAX-WS generados (ar.gov.afip.wsfe).
+ * Operaciones: FEDummy, FECompUltimoAutorizado, FECAESolicitar, FEParamGetTiposMonedas y FEParamGetCotizacion.
+ */
 public class AfipFacturaService {
 
     private static final int TIMEOUT_MS = 60000;
+    private static final DateTimeFormatter AAAAMMDD = DateTimeFormatter.ofPattern("yyyyMMdd");
 
-    public static FECAEResponse emitirComprobante(String token, String sign, long cuitEmisor, int cbteNro, FacturaRequestDTO req) {
-        URL wsdl = AfipFacturaService.class.getResource("/wsdl/WSFEv1.wsdl");
-        Service service = new Service(wsdl);
-        ServiceSoap port = service.getServiceSoap();
+    /** Datos del comprobante que se manda a ARCA (salen de la factura guardada). */
+    public record ComprobanteAfip(
+            int puntoVenta,
+            int tipoComprobante,      // 1 = A, 6 = B, 11 = C
+            long numero,
+            LocalDate fecha,
+            int concepto,             // 1 = Productos
+            int docTipo,              // 80 = CUIT, 99 = sin identificar
+            long docNro,
+            double importeTotal,
+            double importeNeto,
+            double importeIva,
+            double alicuotaIva,       // en %, solo A y B
+            String monedaId,          // MonId de ARCA (PES, DOL, 060...)
+            double cotizacion,
+            int condicionIvaReceptor  // RG 5616: 1 = RI, 4 = Exento, 5 = Consumidor Final, 6 = Monotributo
+    ) {
+        public boolean discriminaIva() {
+            return tipoComprobante == 1 || tipoComprobante == 6;
+        }
+    }
 
-        BindingProvider bp = (BindingProvider) port;
-        bp.getRequestContext().put(
-            BindingProvider.ENDPOINT_ADDRESS_PROPERTY,
-            AfipHttpUtil.getURLWsfe(false)
-        );
-        bp.getRequestContext().put("com.sun.xml.ws.connect.timeout", TIMEOUT_MS);
-        bp.getRequestContext().put("com.sun.xml.ws.request.timeout", TIMEOUT_MS);
+    /** Estado de los servidores de ARCA (FEDummy). */
+    public record EstadoServidores(String appServer, String dbServer, String authServer) {
+        public boolean todoOk() {
+            return "OK".equalsIgnoreCase(appServer) && "OK".equalsIgnoreCase(dbServer)
+                    && "OK".equalsIgnoreCase(authServer);
+        }
+    }
 
-        // 1. Autenticacion
-        FEAuthRequest auth = new FEAuthRequest();
-        auth.setToken(token.trim());
-        auth.setSign(sign.trim());
-        auth.setCuit(cuitEmisor);
+    public record MonedaRemota(String codigoAfip, String denominacion) {
+    }
 
-        System.out.println("Enviando factura Pto de Venta..." + req.getPtoVta());
-        System.out.println("Enviando factura Tipo Cte..." + req.getCbteTipo());
-        // 2. Cabecera
+    private AfipFacturaService() {
+    }
+
+    // ---------------------------------------------------------------------------------------------
+
+    public static EstadoServidores dummy(boolean produccion) {
+        try {
+            DummyResponse r = puerto(produccion).feDummy();
+            if (r == null) throw new AfipException("FEDummy devolvió una respuesta vacía.");
+            return new EstadoServidores(r.getAppServer(), r.getDbServer(), r.getAuthServer());
+        } catch (WebServiceException e) {
+            throw new AfipException("No se pudo conectar con WSFEv1: " + mensaje(e), e);
+        }
+    }
+
+    public static long ultimoComprobante(String token, String sign, long cuit, int puntoVenta, int tipo,
+                                         boolean produccion) {
+        try {
+            FERecuperaLastCbteResponse r = puerto(produccion)
+                    .feCompUltimoAutorizado(auth(token, sign, cuit), puntoVenta, tipo);
+            if (r == null) throw new AfipException("FECompUltimoAutorizado devolvió una respuesta vacía.");
+            List<String> errores = errores(r.getErrors());
+            if (!errores.isEmpty()) {
+                throw new AfipException("ARCA no informó el último comprobante: " + String.join(" | ", errores));
+            }
+            return r.getCbteNro();
+        } catch (WebServiceException e) {
+            throw new AfipException("No se pudo conectar con WSFEv1: " + mensaje(e), e);
+        }
+    }
+
+    public static FECAEResponse solicitarCae(String token, String sign, long cuit, ComprobanteAfip c,
+                                             boolean produccion) {
         FECAECabRequest cab = new FECAECabRequest();
         cab.setCantReg(1);
-        cab.setPtoVta(req.getPtoVta());
-        cab.setCbteTipo(req.getCbteTipo());
+        cab.setPtoVta(c.puntoVenta());
+        cab.setCbteTipo(c.tipoComprobante());
 
-        // 3. Detalle generico
         FECAEDetRequest det = new FECAEDetRequest();
-        det.setConcepto(req.getConcepto());
-        det.setDocTipo(req.getDocTipo());
-        det.setDocNro(req.getDocNro());
-        det.setCbteDesde(cbteNro);
-        det.setCbteHasta(cbteNro);
+        det.setConcepto(c.concepto());
+        det.setDocTipo(c.docTipo());
+        det.setDocNro(c.docNro());
+        det.setCbteDesde(c.numero());
+        det.setCbteHasta(c.numero());
+        String fecha = c.fecha().format(AAAAMMDD);
+        det.setCbteFch(fecha);
 
-        String fechaHoy = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-        det.setCbteFch(fechaHoy);
-
-        // Fechas requeridas si se prestan Servicios (Concepto 2 o 3)
-        if (req.getConcepto() == 2 || req.getConcepto() == 3) {
-            det.setFchServDesde(req.getFchServDesde() != null ? req.getFchServDesde() : fechaHoy);
-            det.setFchServHasta(req.getFchServHasta() != null ? req.getFchServHasta() : fechaHoy);
-            det.setFchVtoPago(req.getFchVtoPago() != null ? req.getFchVtoPago() : fechaHoy);
+        // Fechas obligatorias si se facturan servicios (Concepto 2 o 3)
+        if (c.concepto() == 2 || c.concepto() == 3) {
+            det.setFchServDesde(fecha);
+            det.setFchServHasta(fecha);
+            det.setFchVtoPago(fecha);
         }
 
-        det.setMonId("PES");
-        det.setMonCotiz(1.0);
-        det.setCondicionIVAReceptorId(req.getCondicionIvaReceptor());
-
-        // 4. Desglose de IVA segun el tipo de comprobante
-        if (req.getImporteTotal() == null) {
-            throw new IllegalArgumentException("Falta el importe total de la factura.");
+        det.setMonId(c.monedaId());
+        det.setMonCotiz(c.cotizacion());
+        if (!"PES".equalsIgnoreCase(c.monedaId())) {
+            det.setCanMisMonExt("N"); // se cobra en pesos (obligatorio para moneda extranjera)
         }
-        double impTotal = req.getImporteTotal();
+        det.setCondicionIVAReceptorId(c.condicionIvaReceptor());
 
-        if (req.getCbteTipo() == 11) {
-            // Factura C (Monotributo / Exento): sin IVA desglosado
-            det.setImpTotal(impTotal);
-            det.setImpTotConc(0.00);
-            det.setImpNeto(impTotal);
-            det.setImpOpEx(0.00);
-            det.setImpTrib(0.00);
-            det.setImpIVA(0.00);
-        } else {
-            // Factura A o B (Responsable Inscripto): requiere calculo y nodo <Iva>
-            double alicuota = req.getAlicuotaIvaPct();
-            double impNeto = Math.round((impTotal / (1.0 + (alicuota / 100.0))) * 100.0) / 100.0;
-            double impIva = Math.round((impTotal - impNeto) * 100.0) / 100.0;
+        det.setImpTotal(c.importeTotal());
+        det.setImpTotConc(0.00);
+        det.setImpOpEx(0.00);
+        det.setImpTrib(0.00);
 
-            det.setImpTotal(impTotal);
-            det.setImpTotConc(0.00);
-            det.setImpNeto(impNeto);
-            det.setImpOpEx(0.00);
-            det.setImpTrib(0.00);
-            det.setImpIVA(impIva);
-
-            // ID de alicuota AFIP (5 = 21%, 4 = 10.5%, 6 = 27%)
-            int idAlicuotaAfip = obtenerIdAlicuotaAfip(alicuota);
+        if (c.discriminaIva()) {
+            // Factura A o B: neto gravado + IVA, con el nodo <Iva>
+            det.setImpNeto(c.importeNeto());
+            det.setImpIVA(c.importeIva());
 
             AlicIva alicIva = new AlicIva();
-            alicIva.setId(idAlicuotaAfip);
-            alicIva.setBaseImp(impNeto);
-            alicIva.setImporte(impIva);
-
+            alicIva.setId(idAlicuota(c.alicuotaIva()));
+            alicIva.setBaseImp(c.importeNeto());
+            alicIva.setImporte(c.importeIva());
             ArrayOfAlicIva arrayIva = new ArrayOfAlicIva();
             arrayIva.getAlicIva().add(alicIva);
             det.setIva(arrayIva);
+        } else {
+            // Factura C: no se discrimina IVA
+            det.setImpNeto(c.importeTotal());
+            det.setImpIVA(0.00);
         }
 
         ArrayOfFECAEDetRequest detArray = new ArrayOfFECAEDetRequest();
         detArray.getFECAEDetRequest().add(det);
+        FECAERequest req = new FECAERequest();
+        req.setFeCabReq(cab);
+        req.setFeDetReq(detArray);
 
-        FECAERequest feCAEReq = new FECAERequest();
-        feCAEReq.setFeCabReq(cab);
-        feCAEReq.setFeDetReq(detArray);
-
-        FECAEResponse response = port.fecaeSolicitar(auth, feCAEReq);
-        if (response == null) {
-            throw new RuntimeException("La respuesta de AFIP/ARCA fue nula.");
+        try {
+            FECAEResponse r = puerto(produccion).fecaeSolicitar(auth(token, sign, cuit), req);
+            if (r == null) throw new AfipException("FECAESolicitar devolvió una respuesta vacía.");
+            return r;
+        } catch (WebServiceException e) {
+            throw new AfipException("No se pudo conectar con WSFEv1: " + mensaje(e), e);
         }
-
-        // Errores a nivel general (token, CUIT, formato)
-        if (response.getErrors() != null && response.getErrors().getErr() != null
-                && !response.getErrors().getErr().isEmpty()) {
-            StringBuilder sb = new StringBuilder();
-            for (Err err : response.getErrors().getErr()) {
-                System.err.println("Error AFIP " + err.getCode() + ": " + err.getMsg());
-                sb.append("[").append(err.getCode()).append("] ").append(err.getMsg()).append(" ");
-            }
-            throw new RuntimeException("AFIP devolvio errores: " + sb.toString().trim());
-        }
-
-        if (response.getFeDetResp() == null || response.getFeDetResp().getFECAEDetResponse() == null
-                || response.getFeDetResp().getFECAEDetResponse().isEmpty()) {
-            throw new RuntimeException("AFIP no devolvio detalles de comprobantes en la respuesta.");
-        }
-
-        FECAEDetResponse detResp = response.getFeDetResp().getFECAEDetResponse().get(0);
-
-        // A = Aprobado, R = Rechazado, P = Parcial
-        String resultado = detResp.getResultado();
-        System.out.println("Resultado de la operacion: " + resultado);
-
-        if ("A".equals(resultado)) {
-            System.out.println("Comprobante autorizado");
-            System.out.println("CAE: " + detResp.getCAE());
-            System.out.println("Vencimiento CAE: " + detResp.getCAEFchVto());
-        } else {
-            System.err.println("Comprobante RECHAZADO.");
-            if (detResp.getObservaciones() != null && detResp.getObservaciones().getObs() != null) {
-                for (Obs obs : detResp.getObservaciones().getObs()) {
-                    System.err.println("Observacion " + obs.getCode() + ": " + obs.getMsg());
-                }
-            }
-        }
-
-        return response;
     }
 
-    private static int obtenerIdAlicuotaAfip(double alicuotaPct) {
-        if (alicuotaPct == 21.0) return 5;
+    public static List<MonedaRemota> tiposMonedas(String token, String sign, long cuit, boolean produccion) {
+        try {
+            MonedaResponse r = puerto(produccion).feParamGetTiposMonedas(auth(token, sign, cuit));
+            if (r == null) throw new AfipException("FEParamGetTiposMonedas devolvió una respuesta vacía.");
+            List<String> errores = errores(r.getErrors());
+            if (!errores.isEmpty()) {
+                throw new AfipException("ARCA no informó las monedas: " + String.join(" | ", errores));
+            }
+            List<MonedaRemota> monedas = new ArrayList<>();
+            if (r.getResultGet() != null) {
+                for (Moneda m : r.getResultGet().getMoneda()) {
+                    monedas.add(new MonedaRemota(m.getId(), m.getDesc()));
+                }
+            }
+            return monedas;
+        } catch (WebServiceException e) {
+            throw new AfipException("No se pudo conectar con WSFEv1: " + mensaje(e), e);
+        }
+    }
+
+    /** Cotización de una moneda extranjera según ARCA (null si no la informa). */
+    public static Double cotizacion(String token, String sign, long cuit, String monedaId, boolean produccion) {
+        try {
+            FECotizacionResponse r = puerto(produccion)
+                    .feParamGetCotizacion(auth(token, sign, cuit), monedaId, null);
+            if (r == null || r.getResultGet() == null || !errores(r.getErrors()).isEmpty()) {
+                return null;
+            }
+            return r.getResultGet().getMonCotiz();
+        } catch (WebServiceException e) {
+            throw new AfipException("No se pudo conectar con WSFEv1: " + mensaje(e), e);
+        }
+    }
+
+    // ---------------------------------------------------------------------------------------------
+
+    public static List<String> errores(ArrayOfErr errores) {
+        List<String> lista = new ArrayList<>();
+        if (errores != null && errores.getErr() != null) {
+            for (Err e : errores.getErr()) {
+                lista.add("[" + e.getCode() + "] " + e.getMsg());
+            }
+        }
+        return lista;
+    }
+
+    private static ServiceSoap puerto(boolean produccion) {
+        URL wsdl = AfipFacturaService.class.getResource("/wsdl/WSFEv1.wsdl");
+        ServiceSoap port = new Service(wsdl).getServiceSoap();
+        BindingProvider bp = (BindingProvider) port;
+        bp.getRequestContext().put(BindingProvider.ENDPOINT_ADDRESS_PROPERTY, AfipHttpUtil.getURLWsfe(produccion));
+        bp.getRequestContext().put("com.sun.xml.ws.connect.timeout", TIMEOUT_MS);
+        bp.getRequestContext().put("com.sun.xml.ws.request.timeout", TIMEOUT_MS);
+        return port;
+    }
+
+    private static FEAuthRequest auth(String token, String sign, long cuit) {
+        FEAuthRequest auth = new FEAuthRequest();
+        auth.setToken(token.trim());
+        auth.setSign(sign.trim());
+        auth.setCuit(cuit);
+        return auth;
+    }
+
+    // Id de alícuota de ARCA: 5 = 21%, 4 = 10.5%, 6 = 27%, 8 = 5%, 9 = 2.5%
+    private static int idAlicuota(double alicuotaPct) {
         if (alicuotaPct == 10.5) return 4;
         if (alicuotaPct == 27.0) return 6;
-        if (alicuotaPct == 5.0)  return 8;
-        if (alicuotaPct == 2.5)  return 9;
-        return 5; // por defecto 21%
+        if (alicuotaPct == 5.0) return 8;
+        if (alicuotaPct == 2.5) return 9;
+        return 5;
+    }
+
+    private static String mensaje(Throwable e) {
+        Throwable causa = e;
+        while (causa.getCause() != null && causa.getCause() != causa) causa = causa.getCause();
+        return causa.getMessage() != null ? causa.getMessage() : e.toString();
     }
 }

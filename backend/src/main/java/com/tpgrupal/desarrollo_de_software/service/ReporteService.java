@@ -374,4 +374,29 @@ public class ReporteService {
 
         return new ByteArrayInputStream(sb.toString().getBytes(StandardCharsets.UTF_8));
     }
+
+    // Reporte en texto plano separado por tabulaciones (.txt), con estado y CAE
+    public ByteArrayInputStream generarTxt(List<FacturaReporteDTO> facturas) {
+        StringBuilder sb = new StringBuilder();
+        SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy");
+        sdf.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
+        sb.append("N° Factura\tFecha\tCliente\tCondición IVA\tPunto de Venta\tImporte Total\tCant. Ítems\tEstado\tCAE\n");
+        for (FacturaReporteDTO f : facturas) {
+            sb.append(f.getNumeroFactura() != null ? f.getNumeroFactura() : "").append('\t')
+                    .append(f.getFechaEmision() != null ? sdf.format(f.getFechaEmision()) : "-").append('\t')
+                    .append(limpiarTsv(f.getClienteDenominacion())).append('\t')
+                    .append(limpiarTsv(f.getCondicionIva())).append('\t')
+                    .append(limpiarTsv(f.getPuntoVentaDescripcion())).append('\t')
+                    .append(String.format(java.util.Locale.ROOT, "%.2f", f.getImporteTotal())).append('\t')
+                    .append(f.getCantidadItems()).append('\t')
+                    .append(limpiarTsv(f.getEstado())).append('\t')
+                    .append(limpiarTsv(f.getCae())).append('\n');
+        }
+        return new ByteArrayInputStream(sb.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    // Un tabulador o salto de línea dentro de un dato rompería las columnas
+    private static String limpiarTsv(String valor) {
+        return valor == null ? "" : valor.replaceAll("[\\t\\r\\n]+", " ");
+    }
 }

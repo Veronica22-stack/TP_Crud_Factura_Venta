@@ -13,16 +13,17 @@ import java.util.stream.Collectors;
 public class ClienteService {
 
     private final ClienteRepository clienteRepository;
+    private final BusquedaCatalogoService busquedaCatalogoService;
 
-    public ClienteService(ClienteRepository clienteRepository) {
+    public ClienteService(ClienteRepository clienteRepository, BusquedaCatalogoService busquedaCatalogoService) {
         this.clienteRepository = clienteRepository;
+        this.busquedaCatalogoService = busquedaCatalogoService;
     }
 
+    // Busca por razón social (sin importar mayúsculas ni tildes) o por CUIT con o sin guiones
     @Transactional(readOnly = true)
     public List<ClienteDTO> buscarClientes(String query) {
-        return clienteRepository.buscarClientes(query).stream()
-                .map(this::mapToDto)
-                .collect(Collectors.toList());
+        return busquedaCatalogoService.buscarClientesPorTexto(query);
     }
 
     @Transactional(readOnly = true)

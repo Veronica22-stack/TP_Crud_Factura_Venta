@@ -52,6 +52,20 @@
               <option value="">Cargando condiciones IVA...</option>
             </select>
           </div>
+
+          <div class="form-group">
+            <label for="tipoComprobanteSelect">Tipo de Comprobante</label>
+            <select id="tipoComprobanteSelect" class="form-control">
+              <option value="11">Factura C</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="monedaSelect">Moneda</label>
+            <select id="monedaSelect" class="form-control">
+              <option value="">Pesos Argentinos</option>
+            </select>
+          </div>
         </div>
 
         <div class="form-group cliente-group">
@@ -74,12 +88,13 @@
           <table class="detalles-table">
             <thead>
               <tr>
-                <th style="width: 12%;">Código</th>
-                <th style="width: 30%;">Producto</th>
-                <th style="width: 14%;">Rubro</th>
+                <th style="width: 10%;">Código</th>
+                <th style="width: 27%;">Producto</th>
+                <th style="width: 12%;">Rubro</th>
                 <th style="width: 9%;">Cantidad</th>
-                <th style="width: 13%;">Precio Unitario</th>
-                <th style="width: 12%;">Subtotal</th>
+                <th style="width: 12%;">Precio Unitario</th>
+                <th style="width: 9%;">Bonif. %</th>
+                <th style="width: 11%;">Subtotal</th>
                 <th style="width: 10%;" class="text-center">Acciones</th>
               </tr>
             </thead>
@@ -89,6 +104,7 @@
         </div>
 
         <!-- Total -->
+        <div id="ivaResumen" class="iva-resumen"></div>
         <div class="importe-total-bar">
           <span>Importe Total:</span>
           <span id="importeTotalDisplay" class="importe-total-valor">$ 0,00</span>
