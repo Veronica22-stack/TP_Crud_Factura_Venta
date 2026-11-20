@@ -3,6 +3,10 @@ import { ClienteService } from './services/clienteService';
 import { FacturaFiltrosDTO, FacturaReporteDTO } from './models/factura.dto';
 import { ClienteDTO } from './types/cliente';
 import { PageResponse } from './types/page';
+import { renderizarPaginacion as renderizarPaginacionModal, limpiarPaginacion } from './paginacion';
+
+// Filas por página del explorador de clientes: el backend devuelve solo esa página (LIMIT / OFFSET)
+const TAMANIO_PAGINA_CLIENTES = 8;
 
 // Estado global de la aplicación
 const state: {
@@ -13,7 +17,7 @@ const state: {
   filtros: {
     page: 0,
     size: 5,
-    orden: 'fecha_desc'
+    orden: 'numero_desc'
   },
   clientes: []
 };
@@ -48,6 +52,7 @@ const btnAbrirExplorer = document.getElementById('btnAbrirExplorer') as HTMLButt
 const btnCerrarModal = document.getElementById('btnCerrarModal') as HTMLButtonElement;
 const inputBuscarCliente = document.getElementById('inputBuscarCliente') as HTMLInputElement;
 const tbodyClientes = document.getElementById('clientesTableBody') as HTMLTableSectionElement;
+const paginacionClientes = document.getElementById('paginacionClientes') as HTMLElement;
 
 // Formato de moneda
 function formatearMoneda(monto: number): string {
@@ -124,6 +129,7 @@ function renderizarTablaFacturas(facturas: FacturaReporteDTO[]) {
     const badgeClass = estado === 'ANULADA' ? 'badge-anulada' : 'badge-emitida';
     // Informada a ARCA (con CAE): no se edita ni se elimina, solo se anula (baja lógica)
     const informada = !!f.cae;
+    const anulada = estado === 'ANULADA';
 
     return `
       <tr data-id="${f.id ?? ''}">
@@ -142,12 +148,13 @@ function renderizarTablaFacturas(facturas: FacturaReporteDTO[]) {
         </td>
         <td class="text-center">
           <div class="actions-cell">
-            ${!informada ? `<button class="btn btn-sm btn-edit" data-id="${f.id ?? ''}" title="Editar Factura">Editar</button>` : ''}
+            ${/* Sin CAE: editar, obtener CAE, anular y eliminar. Sin CAE y anulada: solo eliminar.
+                 Con CAE: solo anular (baja lógica) e imprimir. */ ''}
+            ${!informada && !anulada ? `<button class="btn btn-sm btn-edit" data-id="${f.id ?? ''}" title="Editar Factura">Editar</button>` : ''}
+            ${!informada && !anulada ? `<button class="btn btn-sm btn-cae" data-id="${f.id ?? ''}" data-numero="${f.numeroFactura}" title="Obtener CAE de AFIP">Obtener CAE</button>` : ''}
+            ${!anulada ? `<button class="btn btn-sm btn-anular" data-id="${f.id ?? ''}" data-numero="${f.numeroFactura}" data-cae="${informada ? '1' : ''}" title="Anular factura (baja lógica)">Anular</button>` : ''}
             ${!informada ? `<button class="btn btn-sm btn-delete btn-eliminar" data-id="${f.id ?? ''}" data-numero="${f.numeroFactura}" title="Eliminar factura (todavía no fue informada a ARCA)">Eliminar</button>` : ''}
-            ${informada && estado !== 'ANULADA' ? `<button class="btn btn-sm btn-anular" data-id="${f.id ?? ''}" data-numero="${f.numeroFactura}" title="Anular factura (baja lógica)">Anular</button>` : ''}
-            ${f.cae
-              ? `<button class="btn btn-sm btn-imprimir" data-id="${f.id ?? ''}" title="Imprimir factura en PDF">Imprimir PDF</button>`
-              : `${estado !== 'ANULADA' ? `<button class="btn btn-sm btn-cae" data-id="${f.id ?? ''}" data-numero="${f.numeroFactura}" title="Obtener CAE de AFIP">Obtener CAE</button>` : ''}`}
+            ${informada ? `<button class="btn btn-sm btn-imprimir" data-id="${f.id ?? ''}" title="Imprimir factura en PDF">Imprimir PDF</button>` : ''}
           </div>
         </td>
       </tr>
@@ -168,8 +175,12 @@ function renderizarTablaFacturas(facturas: FacturaReporteDTO[]) {
       const target = e.currentTarget as HTMLElement;
       const id = parseInt(target.getAttribute('data-id') || '0', 10);
       const numero = target.getAttribute('data-numero') || '';
+      const conCae = target.getAttribute('data-cae') === '1';
+      const mensaje = conCae
+        ? `¿Está seguro de que desea anular la factura N° ${numero}? Ya fue informada a ARCA: queda guardada como ANULADA (baja lógica).`
+        : `¿Está seguro de que desea anular la factura N° ${numero}? Queda guardada como ANULADA (baja lógica) y después solo se podrá eliminar.`;
 
-      if (id && confirm(`¿Está seguro de que desea anular la factura N° ${numero}? Ya fue informada a ARCA: queda guardada como ANULADA (baja lógica).`)) {
+      if (id && confirm(mensaje)) {
         try {
           await FacturaService.anularFactura(id);
           alert(`Factura N° ${numero} anulada correctamente.`);
@@ -295,7 +306,7 @@ function limpiarFiltros() {
   state.filtros = {
     page: 0,
     size: state.filtros.size ?? 5,
-    orden: state.filtros.orden ?? 'fecha_desc'
+    orden: state.filtros.orden ?? 'numero_desc'
   };
 
   cargarFacturas();
@@ -305,19 +316,25 @@ function limpiarFiltros() {
 async function abrirExplorerClientes() {
   modalClientes.classList.remove('hidden');
   inputBuscarCliente.value = '';
-  await cargarClientesEnModal();
+  await cargarClientesEnModal(0);
 }
 
 function cerrarExplorerClientes() {
   modalClientes.classList.add('hidden');
 }
 
-async function cargarClientesEnModal(buscar?: string) {
+// Pide al backend la página de clientes (LIMIT / OFFSET) que coincide con lo escrito
+let consultaClientes = 0; // descarta respuestas de búsquedas anteriores
+async function cargarClientesEnModal(pagina: number) {
+  const consulta = ++consultaClientes;
   tbodyClientes.innerHTML = `<tr><td colspan="5" class="text-center">Cargando clientes...</td></tr>`;
 
   try {
-    const clientes = await ClienteService.obtenerClientes(buscar);
+    const resultado = await ClienteService.buscarClientes(inputBuscarCliente.value, pagina, TAMANIO_PAGINA_CLIENTES);
+    if (consulta !== consultaClientes) return; // llegó la respuesta de una búsqueda vieja
+    const clientes = resultado.content;
     state.clientes = clientes;
+    renderizarPaginacionModal(paginacionClientes, resultado, 'clientes', p => cargarClientesEnModal(p));
 
     if (clientes.length === 0) {
       tbodyClientes.innerHTML = `<tr><td colspan="5" class="text-center">No se encontraron clientes.</td></tr>`;
@@ -326,19 +343,19 @@ async function cargarClientesEnModal(buscar?: string) {
 
     tbodyClientes.innerHTML = clientes.map(c => `
       <tr>
-        <td><strong>${c.cuitCuil || '-'}</strong></td>
-        <td>${c.denominacion}</td>
-        <td>${c.email || '-'}</td>
-        <td>${c.telefono || '-'}</td>
+        <td><strong>${escaparHtml(c.cuitCuil || '-')}</strong></td>
+        <td>${escaparHtml(c.denominacion)}</td>
+        <td>${escaparHtml(c.email || '-')}</td>
+        <td>${escaparHtml(c.telefono || '-')}</td>
         <td class="text-center">
-          <button class="btn btn-sm btn-primary btn-seleccionar" data-nombre="${c.denominacion}">
+          <button class="btn btn-sm btn-primary btn-seleccionar" data-nombre="${escaparHtml(c.denominacion)}">
             Seleccionar
           </button>
         </td>
       </tr>
     `).join('');
 
-    document.querySelectorAll('.btn-seleccionar').forEach(btn => {
+    tbodyClientes.querySelectorAll('.btn-seleccionar').forEach(btn => {
       btn.addEventListener('click', (e) => {
         const target = e.currentTarget as HTMLElement;
         const nombreCliente = target.getAttribute('data-nombre');
@@ -350,7 +367,9 @@ async function cargarClientesEnModal(buscar?: string) {
       });
     });
   } catch (err) {
+    if (consulta !== consultaClientes) return;
     tbodyClientes.innerHTML = `<tr><td colspan="5" class="text-center" style="color: red;">Error al consultar clientes.</td></tr>`;
+    limpiarPaginacion(paginacionClientes);
   }
 }
 
@@ -407,7 +426,7 @@ let debounceTimer: any;
 inputBuscarCliente.addEventListener('input', () => {
   clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => {
-    cargarClientesEnModal(inputBuscarCliente.value);
+    cargarClientesEnModal(0); // cada búsqueda nueva vuelve a la página 1
   }, 300);
 });
 

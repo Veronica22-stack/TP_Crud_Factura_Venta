@@ -1,6 +1,6 @@
 -- =====================================================================
 -- Productos nuevos de tecnología para facturacion_db
---  * Crea la categoría (rubro) "Celulares y Tablets"
+--  * Crea las categorías (rubros) "Informática" y "Celulares y Tablets" si faltan
 --  * Agrega 3 productos a "Informática" y 3 a "Electrónica"
 --  * Agrega 6 productos a "Celulares y Tablets"
 --  * Les pone precio en TODAS las listas de precios:
@@ -26,6 +26,15 @@ SELECT @ahora, @ahora, @usuario, @usuario, @codigo_rubro, 'Celulares y Tablets'
 FROM DUAL
 WHERE @existe_rubro = 0;
 
+-- "Informática" no viene en los datos de prueba: si falta se crea, así los productos no quedan sin categoría
+SET @existe_inf := (SELECT COUNT(*) FROM rubro WHERE LOWER(denominacion) LIKE 'inform%');
+SET @codigo_inf := (SELECT COALESCE(MAX(codigo), 5500) + 1 FROM rubro);
+
+INSERT INTO rubro (fecha_alta, fecha_modificacion, usuario_carga_id, usuario_modificacion_id, codigo, denominacion)
+SELECT @ahora, @ahora, @usuario, @usuario, @codigo_inf, 'Informática'
+FROM DUAL
+WHERE @existe_inf = 0;
+
 -- Ids de las 3 categorías (se buscan por nombre, con o sin tilde)
 SET @rubro_inf := (SELECT id FROM rubro WHERE LOWER(denominacion) LIKE 'inform%' ORDER BY id LIMIT 1);
 SET @rubro_ele := (SELECT id FROM rubro WHERE LOWER(denominacion) LIKE 'electr%' ORDER BY id LIMIT 1);
@@ -33,13 +42,14 @@ SET @rubro_cel := (SELECT id FROM rubro WHERE denominacion = 'Celulares y Tablet
 
 -- 2) Productos nuevos ---------------------------------------------------
 DROP TEMPORARY TABLE IF EXISTS nuevos_productos;
-CREATE TEMPORARY TABLE nuevos_productos (
-  codigo       VARCHAR(50),
-  denominacion VARCHAR(255),
-  rubro_id     BIGINT,
-  marca        VARCHAR(100),
-  precio       DOUBLE
-);
+-- Misma intercalación (collation) que articulo y marca, para poder comparar los textos
+CREATE TEMPORARY TABLE nuevos_productos
+SELECT a.codigo, a.denominacion, a.rubro_id,
+       m.denominacion AS marca,
+       CAST(0 AS DOUBLE) AS precio
+FROM articulo a
+LEFT JOIN marca m ON m.id = a.marca_id
+WHERE 1 = 0;
 
 INSERT INTO nuevos_productos (codigo, denominacion, rubro_id, marca, precio) VALUES
   -- Informática

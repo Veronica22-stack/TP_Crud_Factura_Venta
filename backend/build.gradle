@@ -32,7 +32,12 @@ dependencies {
     implementation 'org.bouncycastle:bcpkix-jdk18on:1.78'
     implementation 'org.bouncycastle:bcprov-jdk18on:1.78'
     // Cliente SOAP (JAX-WS) para WSFEv1, version jakarta
-    implementation 'com.sun.xml.ws:jaxws-rt:4.0.2'
+    // Se excluye com.sun.xml.bind (jaxb-impl/jaxb-core): es una segunda copia de JAXB que choca con
+    // org.glassfish.jaxb:jaxb-runtime (la que trae Spring Boot y la que usa jaxws-rt). Con las dos,
+    // bootJar falla por "jaxb-core-4.0.9.jar is a duplicate".
+    implementation('com.sun.xml.ws:jaxws-rt:4.0.2') {
+        exclude group: 'com.sun.xml.bind'
+    }
     // Esto le indica a Gradle que busque y use todos los .jar dentro de la carpeta libs
 
     //bcpkix-jdk15to18-1.81.jar,bcprov-jdk15to18-1.81.jar,bcutil-jdk15to18-1.81.jar

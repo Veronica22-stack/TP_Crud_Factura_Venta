@@ -1,6 +1,5 @@
 package com.tpgrupal.desarrollo_de_software.controller;
 
-import com.tpgrupal.desarrollo_de_software.dto.ListaPrecioArticuloDTO;
 import com.tpgrupal.desarrollo_de_software.dto.ListaPrecioDTO;
 import com.tpgrupal.desarrollo_de_software.service.ListaPrecioService;
 import org.springframework.http.ResponseEntity;
@@ -22,13 +21,6 @@ public class ListaPrecioRestController {
     @GetMapping("/listas-precio")
     public ResponseEntity<List<ListaPrecioDTO>> listarListasPrecio() {
         return ResponseEntity.ok(listaPrecioService.listarListasPrecio());
-    }
-
-    @GetMapping("/lista-precio-articulos")
-    public ResponseEntity<List<ListaPrecioArticuloDTO>> buscarArticulos(
-            @RequestParam(required = false) String buscar,
-            @RequestParam(required = false) Long listaPrecioId) {
-        return ResponseEntity.ok(listaPrecioService.buscarArticulos(buscar, listaPrecioId));
     }
 
     @GetMapping("/puntos-venta")

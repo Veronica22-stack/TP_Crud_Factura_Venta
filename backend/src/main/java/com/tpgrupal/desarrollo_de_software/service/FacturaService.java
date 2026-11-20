@@ -70,7 +70,7 @@ public class FacturaService {
             "cliente_desc", "COALESCE(c.denominacion, 'Consumidor Final') DESC, f.numero DESC"
     ));
     private static final int TAMANIO_MAXIMO_PAGINA = 100;
-    private static final String ORDEN_POR_DEFECTO = "fecha_desc";
+    private static final String ORDEN_POR_DEFECTO = "numero_desc";
 
     @Transactional(readOnly = true)
     public PageResponse<FacturaReporteDTO> buscarFacturasPaginadas(
@@ -372,6 +372,12 @@ public class FacturaService {
                     + " ya fue informada a ARCA (CAE " + f.getCae() + ") y no se puede editar. Solo se puede anular.");
         }
 
+        // Una factura anulada (sin CAE) ya no se edita: solo se puede eliminar
+        if ("ANULADA".equalsIgnoreCase(f.getEstado())) {
+            throw new IllegalStateException("La factura " + f.getNumero()
+                    + " está anulada y no se puede editar. Solo se puede eliminar.");
+        }
+
         // Si vienen los ítems es una edición completa desde el formulario
         boolean edicionCompleta = dto.getDetalles() != null && !dto.getDetalles().isEmpty();
         if (edicionCompleta) {
@@ -457,7 +463,7 @@ public class FacturaService {
     // la factura queda con resultadoAfip = R y el motivo, y se devuelve igual.
     public FacturaReporteDTO emitirCae(Long idOrNumero, Integer tipoComprobante) {
         FacturaVenta f = buscarFacturaPorIdONumero(idOrNumero);
-        facturacionAfipService.emitir(f, tipoComprobante);
+        facturacionAfipService.emitir(f, FACTURA_C);
         facturaVentaRepository.save(f);
         em.flush();
         return convertirAInformeDetallado(f);
@@ -541,11 +547,11 @@ public class FacturaService {
                 .orElseThrow(() -> new ResourceNotFoundException("Factura no encontrada con identificador: " + idOrNumero));
     }
     
-    // 1 = Factura A, 6 = Factura B, 11 = Factura C (sin dato: el de afip.cbte.tipo)
+    // El sistema emite siempre Factura C (11), venga lo que venga del formulario
+    private static final int FACTURA_C = 11;
+
     private int resolverTipoComprobante(Integer tipo) {
-        int resultado = tipo != null && tipo > 0 ? tipo : facturacionAfipService.tipoComprobantePorDefecto();
-        FacturacionAfipService.validarTipoComprobante(resultado);
-        return resultado;
+        return FACTURA_C;
     }
     
     private FacturaVentaDetalle crearDetalle(FacturaDetalleRequestDTO detDto, Long listaPrecioId) {
@@ -611,11 +617,14 @@ public class FacturaService {
                         .subtotal(d.getImporteSubtotal())
                         .codigo(d.getListaPrecioArticulo() != null && d.getListaPrecioArticulo().getArticulo() != null
                                 ? d.getListaPrecioArticulo().getArticulo().getCodigo() : null)
+                        .rubro(d.getListaPrecioArticulo() != null && d.getListaPrecioArticulo().getArticulo() != null
+                                && d.getListaPrecioArticulo().getArticulo().getRubro() != null
+                                ? d.getListaPrecioArticulo().getArticulo().getRubro().getDenominacion() : null)
                         .porcentajeBonificacion(d.getPorcentajeBonificacion())
                         .importeNeto(d.getImporteNeto())
                         .importeIva(d.getImporteIva())
                         .build());
-                
+
                 // La lista de la factura es la de sus ítems
                 if (listaPrecioId == null && d.getListaPrecioArticulo() != null
                         && d.getListaPrecioArticulo().getListaPrecio() != null) {

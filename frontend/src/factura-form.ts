@@ -7,6 +7,11 @@ import {
 } from './models/factura.dto';
 import { ClienteService } from './services/clienteService';
 import { ListaPrecioDTO, ListaPrecioArticuloDTO } from './types/listaPrecioArticulo';
+import { renderizarPaginacion, limpiarPaginacion } from './paginacion';
+
+// Filas por página de los exploradores: el backend devuelve solo esa página (LIMIT / OFFSET)
+const TAMANIO_PAGINA_PRODUCTOS = 8;
+const TAMANIO_PAGINA_CLIENTES = 8;
 
 // Estado del formulario
 let modoEdicion = false;
@@ -15,9 +20,7 @@ let numeroFacturaParam = '';
 let siguienteDetalleId = 1;
 let puntoVentaPorDefectoId: number | undefined;
 let listaPrecioSeleccionada: ListaPrecioDTO | null = null;
-// Productos de cada lista de precios ya consultada (id de lista -> productos).
-// Cada ítem usa el catálogo de SU lista, así se pueden mezclar ítems de listas distintas.
-const catalogosPorLista = new Map<number, ListaPrecioArticuloDTO[]>();
+// Cada ítem guarda la lista de precios de la que salió, así se pueden mezclar ítems de listas distintas.
 let listasDePrecio: ListaPrecioDTO[] = [];
 let opcionesDisponibles: OpcionesComboDTO | null = null;
 let detalles: FacturaVentaDetalleDTO[] = [];
@@ -43,6 +46,9 @@ const btnAbrirExplorer = document.getElementById('btnAbrirExplorer') as HTMLButt
 const btnCerrarModal = document.getElementById('btnCerrarModal') as HTMLButtonElement;
 const inputBuscarCliente = document.getElementById('inputBuscarCliente') as HTMLInputElement;
 const tbodyClientes = document.getElementById('clientesTableBody') as HTMLTableSectionElement;
+const paginacionClientes = document.getElementById('paginacionClientes') as HTMLElement;
+let paginaClientes = 0;
+let consultaClientes = 0; // descarta respuestas de búsquedas anteriores
 
 function crearModalListasPrecio(): void {
   document.body.insertAdjacentHTML('beforeend', `
@@ -90,9 +96,13 @@ const filtroProductoRubro = document.getElementById('filtroProductoRubro') as HT
 const filtroProductoCodigo = document.getElementById('filtroProductoCodigo') as HTMLInputElement;
 const filtroProductoDenominacion = document.getElementById('filtroProductoDenominacion') as HTMLInputElement;
 const tbodyProductos = document.getElementById('productosTableBody') as HTMLTableSectionElement;
+const paginacionProductos = document.getElementById('paginacionProductos') as HTMLElement;
 // Fila que se está cambiando desde el explorador (null = se agrega un ítem nuevo)
 let indiceItemEnExplorador: number | null = null;
-let catalogoEnExplorador: ListaPrecioArticuloDTO[] = [];
+let listaEnExplorador: number | null = null;
+let paginaProductos = 0;
+let productosPaginaActual: ListaPrecioArticuloDTO[] = []; // solo la página que mandó el backend
+let consultaProductos = 0; // descarta respuestas de búsquedas anteriores
 
 // Muestra en el recuadro "Cliente" el nombre del cliente elegido en el combo oculto
 function mostrarClienteSeleccionado(): void {
@@ -169,9 +179,8 @@ function cargarFacturaEnFormulario(factura: FacturaVentaDTO): void {
   }
   mostrarClienteSeleccionado();
 
-  if (factura.tipoComprobante) {
-    tipoComprobanteSelect.value = factura.tipoComprobante.toString();
-  }
+  // El tipo de factura es siempre C (11): no se toma el de la factura guardada
+  tipoComprobanteSelect.value = '11';
   if (factura.tipoMonedaId) {
     monedaSelect.value = factura.tipoMonedaId.toString();
   }
@@ -233,19 +242,6 @@ function leerFacturaDesdeFormulario(): FacturaVentaDTO {
 function nombreLista(id?: number): string {
   const lista = listasDePrecio.find(l => l.id === id);
   return lista ? `${lista.codigo} - ${lista.denominacion}` : '';
-}
-
-// Trae (una sola vez) los productos de una lista de precios
-async function obtenerCatalogo(listaId: number): Promise<ListaPrecioArticuloDTO[]> {
-  if (!catalogosPorLista.has(listaId)) {
-    catalogosPorLista.set(listaId, await FacturaService.listarArticulosPorLista(listaId));
-  }
-  return catalogosPorLista.get(listaId) || [];
-}
-
-// Rubros distintos de un catálogo
-function obtenerRubros(catalogo: ListaPrecioArticuloDTO[]): string[] {
-  return Array.from(new Set(catalogo.map(a => a.rubro).filter(r => !!r))).sort();
 }
 
 function escaparHtml(texto: string): string {
@@ -364,22 +360,18 @@ async function abrirExplorerProductos(indiceItem: number | null): Promise<void> 
     return;
   }
 
-  try {
-    catalogoEnExplorador = await obtenerCatalogo(listaId);
-  } catch (err: any) {
-    alert(`No se pudieron cargar los productos: ${err.message}`);
-    return;
-  }
-
   indiceItemEnExplorador = indiceItem;
+  listaEnExplorador = listaId;
   tituloModalProductos.textContent = `Explorador de Productos · ${nombreLista(listaId) || 'Lista de precios'}`;
+  // Los rubros de la lista vienen del backend (no hace falta traer todos los productos)
+  const rubros = await FacturaService.listarRubros(listaId);
   filtroProductoRubro.innerHTML = '<option value="">Todos los rubros</option>' +
-    obtenerRubros(catalogoEnExplorador).map(r => `<option value="${escaparHtml(r)}">${escaparHtml(r)}</option>`).join('');
+    rubros.map(r => `<option value="${escaparHtml(r)}">${escaparHtml(r)}</option>`).join('');
   filtroProductoRubro.value = '';
   filtroProductoCodigo.value = '';
   filtroProductoDenominacion.value = '';
   modalProductos.classList.remove('hidden');
-  renderizarProductosEnModal();
+  await cargarProductosEnModal(0);
   filtroProductoDenominacion.focus();
 }
 
@@ -388,24 +380,41 @@ function cerrarExplorerProductos(): void {
   indiceItemEnExplorador = null;
 }
 
-// Filtra por rubro, código y denominación (todo a la vez)
-function renderizarProductosEnModal(): void {
-  const rubro = filtroProductoRubro.value;
-  const codigo = filtroProductoCodigo.value.trim().toLowerCase();
-  const denominacion = filtroProductoDenominacion.value.trim().toLowerCase();
+// Pide al backend la página de productos con los filtros (rubro, código y denominación).
+// El backend hace el COUNT y trae solo esa página con LIMIT / OFFSET.
+async function cargarProductosEnModal(pagina: number): Promise<void> {
+  if (listaEnExplorador === null) return;
+  const consulta = ++consultaProductos;
+  tbodyProductos.innerHTML = `<tr><td colspan="5" class="text-center">Cargando productos...</td></tr>`;
 
-  const productos = catalogoEnExplorador.filter(a =>
-    (!rubro || a.rubro === rubro) &&
-    (!codigo || (a.codigo || '').toLowerCase().includes(codigo)) &&
-    (!denominacion || (a.denominacion || '').toLowerCase().includes(denominacion))
-  );
+  let resultado;
+  try {
+    resultado = await FacturaService.buscarProductos({
+      listaPrecioId: listaEnExplorador,
+      rubro: filtroProductoRubro.value || undefined,
+      codigo: filtroProductoCodigo.value,
+      denominacion: filtroProductoDenominacion.value,
+      pagina,
+      tamanio: TAMANIO_PAGINA_PRODUCTOS
+    });
+  } catch (err: any) {
+    if (consulta !== consultaProductos) return;
+    tbodyProductos.innerHTML = `<tr><td colspan="5" class="text-center" style="color: red;">No se pudieron cargar los productos: ${escaparHtml(err.message)}</td></tr>`;
+    limpiarPaginacion(paginacionProductos);
+    return;
+  }
+  if (consulta !== consultaProductos) return; // llegó la respuesta de una búsqueda vieja
 
-  if (productos.length === 0) {
+  paginaProductos = resultado.pageNumber;
+  productosPaginaActual = resultado.content;
+  renderizarPaginacion(paginacionProductos, resultado, 'productos', p => cargarProductosEnModal(p));
+
+  if (productosPaginaActual.length === 0) {
     tbodyProductos.innerHTML = `<tr><td colspan="5" class="text-center">No se encontraron productos.</td></tr>`;
     return;
   }
 
-  tbodyProductos.innerHTML = productos.map(a => `
+  tbodyProductos.innerHTML = productosPaginaActual.map(a => `
     <tr>
       <td><strong>${escaparHtml(a.codigo)}</strong></td>
       <td>${escaparHtml(a.denominacion)}</td>
@@ -420,7 +429,7 @@ function renderizarProductosEnModal(): void {
   tbodyProductos.querySelectorAll('.btn-seleccionar-producto').forEach(btn => {
     btn.addEventListener('click', (e) => {
       const id = Number((e.currentTarget as HTMLElement).getAttribute('data-id'));
-      const art = catalogoEnExplorador.find(a => a.id === id);
+      const art = productosPaginaActual.find(a => a.id === id);
       if (art) seleccionarProducto(art);
     });
   });
@@ -462,7 +471,8 @@ function seleccionarProducto(art: ListaPrecioArticuloDTO): void {
         subtotal: 0
       };
       nuevo.subtotal = calcularSubtotal(nuevo);
-      detalles.push(nuevo);
+      // Los renglones nuevos se agregan arriba de todo
+      detalles.unshift(nuevo);
     }
   }
 
@@ -511,13 +521,8 @@ async function cargarOpciones(): Promise<void> {
     // Una factura nueva arranca como Consumidor Final sin cliente (se destilda para elegir uno)
     marcarConsumidorFinal(true);
 
-    // Tipos de comprobante (A, B, C) y monedas
-    const tipos = await FacturaService.listarTiposComprobante();
-    if (tipos.length > 0) {
-      tipoComprobanteSelect.innerHTML = tipos.map(t => `<option value="${t.codigo}" title="${t.descripcion}">${t.nombre}</option>`).join('');
-      const porDefecto = tipos.find(t => t.porDefecto);
-      if (porDefecto) tipoComprobanteSelect.value = porDefecto.codigo.toString();
-    }
+    // Tipo de factura fijo: Factura C (11). El combo está deshabilitado en el HTML.
+    tipoComprobanteSelect.value = '11';
     const monedas = await FacturaService.listarMonedas();
     if (monedas.length > 0) {
       monedaSelect.innerHTML = monedas.map(m => `<option value="${m.id}">${m.denominacion} (${m.codigoAfip})</option>`).join('');
@@ -650,17 +655,23 @@ async function guardarFactura(e: Event): Promise<void> {
 async function abrirExplorerClientes(): Promise<void> {
   modalClientes.classList.remove('hidden');
   inputBuscarCliente.value = '';
-  await cargarClientesEnModal();
+  await cargarClientesEnModal(0);
 }
 
 function cerrarExplorerClientes(): void {
   modalClientes.classList.add('hidden');
 }
 
-async function cargarClientesEnModal(buscar?: string): Promise<void> {
+// Pide al backend la página de clientes (LIMIT / OFFSET) que coincide con lo escrito
+async function cargarClientesEnModal(pagina: number): Promise<void> {
+  const consulta = ++consultaClientes;
   tbodyClientes.innerHTML = `<tr><td colspan="5" class="text-center">Cargando clientes...</td></tr>`;
   try {
-    const clientes = await ClienteService.obtenerClientes(buscar);
+    const resultado = await ClienteService.buscarClientes(inputBuscarCliente.value, pagina, TAMANIO_PAGINA_CLIENTES);
+    if (consulta !== consultaClientes) return; // llegó la respuesta de una búsqueda vieja
+    paginaClientes = resultado.pageNumber;
+    renderizarPaginacion(paginacionClientes, resultado, 'clientes', p => cargarClientesEnModal(p));
+    const clientes = resultado.content;
 
     if (clientes.length === 0) {
       tbodyClientes.innerHTML = `<tr><td colspan="5" class="text-center">No se encontraron clientes.</td></tr>`;
@@ -669,10 +680,10 @@ async function cargarClientesEnModal(buscar?: string): Promise<void> {
 
     tbodyClientes.innerHTML = clientes.map(c => `
       <tr>
-        <td><strong>${c.cuitCuil || '-'}</strong></td>
-        <td>${c.denominacion}</td>
-        <td>${c.email || '-'}</td>
-        <td>${c.telefono || '-'}</td>
+        <td><strong>${escaparHtml(c.cuitCuil || '-')}</strong></td>
+        <td>${escaparHtml(c.denominacion)}</td>
+        <td>${escaparHtml(c.email || '-')}</td>
+        <td>${escaparHtml(c.telefono || '-')}</td>
         <td class="text-center">
           <button type="button" class="btn btn-sm btn-primary btn-seleccionar" data-id="${c.id}">Seleccionar</button>
         </td>
@@ -690,7 +701,9 @@ async function cargarClientesEnModal(buscar?: string): Promise<void> {
       });
     });
   } catch (err) {
+    if (consulta !== consultaClientes) return;
     tbodyClientes.innerHTML = `<tr><td colspan="5" class="text-center" style="color: red;">Error al consultar clientes.</td></tr>`;
+    limpiarPaginacion(paginacionClientes);
   }
 }
 
@@ -702,7 +715,8 @@ async function resolverClienteEscrito(): Promise<boolean> {
   if (!texto) return false;
 
   try {
-    const clientes = await ClienteService.obtenerClientes(texto);
+    // Alcanza con la primera página: o hay uno con ese nombre exacto, o tiene que ser el único que coincide
+    const clientes = (await ClienteService.buscarClientes(texto, 0, 10)).content;
     const exacto = clientes.find(c => c.denominacion.toLowerCase() === texto.toLowerCase());
     const elegido = exacto ?? (clientes.length === 1 ? clientes[0] : undefined);
 
@@ -730,13 +744,6 @@ function cerrarExplorerListasPrecio(): void {
 // Los ítems que ya tienen producto conservan su lista y su precio:
 // así una factura puede tener productos de listas de precios distintas.
 async function aplicarListaPrecio(lista: ListaPrecioDTO): Promise<void> {
-  try {
-    await obtenerCatalogo(lista.id);
-  } catch (err: any) {
-    alert(`No se pudieron cargar los productos de la lista: ${err.message}`);
-    return;
-  }
-
   if (!listasDePrecio.some(l => l.id === lista.id)) listasDePrecio.push(lista);
   listaPrecioSeleccionada = lista;
   listaPrecioTexto.value = `${lista.codigo} - ${lista.denominacion}`;
@@ -825,6 +832,8 @@ document.addEventListener('DOMContentLoaded', async () => {
           articuloId: d.articuloId,
           listaPrecioId: d.listaPrecioId,
           listaPrecioArticuloId: d.listaPrecioArticuloId,
+          codigo: d.codigo,
+          rubro: d.rubro, // el backend ya manda código y rubro de cada ítem
           productoDescripcion: d.productoDescripcion,
           cantidad: d.cantidad,
           precioUnitario: d.precioUnitario,
@@ -832,18 +841,8 @@ document.addEventListener('DOMContentLoaded', async () => {
           subtotal: d.subtotal
         }))
       });
-      // Cada ítem trae su propia lista: se cargan los productos de cada una para mostrar código y rubro
+      // Nombres de las listas, para mostrar de qué lista salió cada ítem
       listasDePrecio = await FacturaService.listarListasPrecio();
-      for (const d of detalles) {
-        if (d.listaPrecioId === undefined) continue;
-        const catalogo = await obtenerCatalogo(d.listaPrecioId);
-        const art = catalogo.find(a => a.id === d.listaPrecioArticuloId)
-          ?? catalogo.find(a => a.articuloId === d.articuloId);
-        if (art) {
-          d.rubro = art.rubro;
-          d.codigo = art.codigo;
-        }
-      }
 
       // Preselecciona la lista de la factura para los próximos ítems (se puede cambiar)
       if (factura.listaPrecioId) {
@@ -887,10 +886,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (e.target === modalClientes) cerrarExplorerClientes();
   });
 
+  // Cada búsqueda nueva vuelve a la página 1
   let debounceTimer: any;
   inputBuscarCliente.addEventListener('input', () => {
     clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => cargarClientesEnModal(inputBuscarCliente.value), 300);
+    debounceTimer = setTimeout(() => cargarClientesEnModal(0), 300);
   });
   clienteTexto.addEventListener('input', () => {
     clienteSelect.value = '';
@@ -904,9 +904,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   modalProductos.addEventListener('click', (e) => {
     if (e.target === modalProductos) cerrarExplorerProductos();
   });
-  filtroProductoRubro.addEventListener('change', renderizarProductosEnModal);
-  filtroProductoCodigo.addEventListener('input', renderizarProductosEnModal);
-  filtroProductoDenominacion.addEventListener('input', renderizarProductosEnModal);
+  // Cambiar un filtro pide de nuevo la página 1 al backend (los textos esperan a que se deje de escribir)
+  let debounceProductos: any;
+  filtroProductoRubro.addEventListener('change', () => cargarProductosEnModal(0));
+  [filtroProductoCodigo, filtroProductoDenominacion].forEach(input => {
+    input.addEventListener('input', () => {
+      clearTimeout(debounceProductos);
+      debounceProductos = setTimeout(() => cargarProductosEnModal(0), 300);
+    });
+  });
 
   btnAbrirExplorerListas.addEventListener('click', abrirExplorerListasPrecio);
   listaPrecioTexto.addEventListener('click', abrirExplorerListasPrecio);

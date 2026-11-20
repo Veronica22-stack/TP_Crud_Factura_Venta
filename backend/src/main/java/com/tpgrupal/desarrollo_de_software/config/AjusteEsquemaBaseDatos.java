@@ -42,5 +42,34 @@ public class AjusteEsquemaBaseDatos implements ApplicationRunner {
         } catch (Exception e) {
             log.warn("No se pudo revisar la columna factura_venta.cliente_id: {}", e.getMessage());
         }
+        corregirColumnaCuit();
+    }
+
+    /**
+     * Los scripts de datos viejos crearon la columna con un error de tipeo (cliente.cut_cuil) y la
+     * entidad usa cliente.cuit_cuil: Hibernate agregó cuit_cuil vacía, así que la app no veía los CUIT
+     * (no funcionaba la búsqueda por CUIT ni la Factura A). Se copian los CUIT a la columna correcta y
+     * la vieja deja de ser obligatoria (si no, dar de alta un cliente falla). No se borra nada.
+     */
+    private void corregirColumnaCuit() {
+        try {
+            List<String> nullable = jdbcTemplate.queryForList(
+                    "SELECT IS_NULLABLE FROM information_schema.COLUMNS "
+                            + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cliente' AND COLUMN_NAME = ?",
+                    String.class, "cut_cuil");
+            if (nullable.isEmpty()) return; // base creada con el nombre correcto
+            int copiados = jdbcTemplate.update(
+                    "UPDATE cliente SET cuit_cuil = cut_cuil "
+                            + "WHERE (cuit_cuil IS NULL OR cuit_cuil = '') AND cut_cuil IS NOT NULL AND cut_cuil <> ''");
+            if (copiados > 0) {
+                log.info("Base de datos: se copiaron {} CUIT de cliente.cut_cuil a cliente.cuit_cuil.", copiados);
+            }
+            if ("NO".equalsIgnoreCase(nullable.get(0))) {
+                jdbcTemplate.execute("ALTER TABLE cliente MODIFY cut_cuil VARCHAR(255) NULL");
+                log.info("Base de datos: cliente.cut_cuil (columna vieja) ahora acepta NULL.");
+            }
+        } catch (Exception e) {
+            log.warn("No se pudo corregir la columna cliente.cuit_cuil: {}", e.getMessage());
+        }
     }
 }

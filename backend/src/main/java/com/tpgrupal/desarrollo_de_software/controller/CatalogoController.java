@@ -28,24 +28,36 @@ public class CatalogoController {
         this.facturacionAfipService = facturacionAfipService;
     }
 
-    // Explorador de productos: palabras en código, denominación, rubro, marca o lista (sin importar tildes)
+    // Explorador de productos paginado (LIMIT / OFFSET). "buscar": palabras en código, denominación,
+    // rubro, marca o lista; "rubro" exacto; "codigo" y "denominacion" contienen (sin importar tildes)
     @GetMapping("/productos")
     public PageResponse<ListaPrecioArticuloDTO> buscarProductos(
             @RequestParam(required = false) String buscar,
             @RequestParam(required = false) Long listaPrecioId,
+            @RequestParam(required = false) String rubro,
+            @RequestParam(required = false) String codigo,
+            @RequestParam(required = false) String denominacion,
             @RequestParam(defaultValue = "0") int pagina,
             @RequestParam(defaultValue = "8") int tamanio) {
-        return busquedaCatalogoService.buscarProductos(buscar, listaPrecioId, pagina, tamanio);
+        return busquedaCatalogoService.buscarProductos(buscar, listaPrecioId, rubro, codigo, denominacion, pagina, tamanio);
     }
 
-    // Buscador de clientes: por CUIT/CUIL (con o sin guiones) y/o razón social
+    // Rubros con productos en la lista (combo del explorador de productos)
+    @GetMapping("/rubros")
+    public List<String> rubros(@RequestParam(required = false) Long listaPrecioId) {
+        return busquedaCatalogoService.rubros(listaPrecioId);
+    }
+
+    // Buscador de clientes paginado (LIMIT / OFFSET): "texto" en razón social o CUIT,
+    // o filtros separados por CUIT/CUIL (con o sin guiones) y razón social
     @GetMapping("/clientes/buscar")
     public PageResponse<ClienteDTO> buscarClientes(
+            @RequestParam(required = false) String texto,
             @RequestParam(required = false) String cuit,
             @RequestParam(required = false) String razonSocial,
             @RequestParam(defaultValue = "0") int pagina,
             @RequestParam(defaultValue = "8") int tamanio) {
-        return busquedaCatalogoService.buscarClientes(cuit, razonSocial, pagina, tamanio);
+        return busquedaCatalogoService.buscarClientes(texto, cuit, razonSocial, pagina, tamanio);
     }
 
     @GetMapping("/monedas")

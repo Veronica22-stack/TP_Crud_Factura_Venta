@@ -8,6 +8,7 @@ export interface FacturaDetalleReporteDTO {
   precioUnitario: number;
   subtotal: number;
   codigo?: string;
+  rubro?: string;
   porcentajeBonificacion?: number;
   importeNeto?: number;
   importeIva?: number;

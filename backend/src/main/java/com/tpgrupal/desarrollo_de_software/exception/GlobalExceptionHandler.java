@@ -12,7 +12,9 @@ import java.util.Map;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    @ExceptionHandler({ResourceNotFoundException.class, java.util.NoSuchElementException.class})
+    // NoResourceFoundException: una ruta que no existe (sin esto, el manejador general la devolvía como 500)
+    @ExceptionHandler({ResourceNotFoundException.class, java.util.NoSuchElementException.class,
+            org.springframework.web.servlet.resource.NoResourceFoundException.class})
     public ResponseEntity<Map<String, Object>> handleNotFound(Exception ex) {
         Map<String, Object> body = new HashMap<>();
         body.put("timestamp", LocalDateTime.now());

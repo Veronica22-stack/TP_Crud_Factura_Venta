@@ -55,7 +55,8 @@
 
           <div class="form-group">
             <label for="tipoComprobanteSelect">Tipo de Comprobante</label>
-            <select id="tipoComprobanteSelect" class="form-control">
+            <!-- Siempre Factura C: no se puede cambiar -->
+            <select id="tipoComprobanteSelect" class="form-control" disabled>
               <option value="11">Factura C</option>
             </select>
           </div>
@@ -144,6 +145,7 @@
             <tbody id="clientesTableBody"></tbody>
           </table>
         </div>
+        <div id="paginacionClientes"></div>
       </div>
     </div>
   </div>
@@ -177,6 +179,7 @@
             <tbody id="productosTableBody"></tbody>
           </table>
         </div>
+        <div id="paginacionProductos"></div>
       </div>
     </div>
   </div>

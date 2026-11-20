@@ -40,7 +40,7 @@ public class FacturaRestController {
             @RequestParam(required = false) String estado,
             @RequestParam(required = false) Double montoMinimo,
             @RequestParam(required = false) Long listaPrecioId,
-            @RequestParam(defaultValue = "fecha_desc") String orden,
+            @RequestParam(defaultValue = "numero_desc") String orden,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "5") int size) {
 
@@ -157,7 +157,7 @@ public class FacturaRestController {
             @RequestParam(required = false) String estado,
             @RequestParam(required = false) Double montoMinimo,
             @RequestParam(required = false) Long listaPrecioId,
-            @RequestParam(defaultValue = "fecha_desc") String orden) {
+            @RequestParam(defaultValue = "numero_desc") String orden) {
 
         List<FacturaReporteDTO> facturas = facturaService.buscarFacturasFiltradas(
                 numero, cliente, clienteId, condicionIva, fechaDesde, fechaHasta, estado, montoMinimo, listaPrecioId, orden);
@@ -184,7 +184,7 @@ public class FacturaRestController {
             @RequestParam(required = false) String estado,
             @RequestParam(required = false) Double montoMinimo,
             @RequestParam(required = false) Long listaPrecioId,
-            @RequestParam(defaultValue = "fecha_desc") String orden) {
+            @RequestParam(defaultValue = "numero_desc") String orden) {
 
         List<FacturaReporteDTO> facturas = facturaService.buscarFacturasFiltradas(
                 numero, cliente, clienteId, condicionIva, fechaDesde, fechaHasta, estado, montoMinimo, listaPrecioId, orden);
@@ -211,7 +211,7 @@ public class FacturaRestController {
             @RequestParam(required = false) String estado,
             @RequestParam(required = false) Double montoMinimo,
             @RequestParam(required = false) Long listaPrecioId,
-            @RequestParam(defaultValue = "fecha_desc") String orden) {
+            @RequestParam(defaultValue = "numero_desc") String orden) {
 
         List<FacturaReporteDTO> facturas = facturaService.buscarFacturasFiltradas(
                 numero, cliente, clienteId, condicionIva, fechaDesde, fechaHasta, estado, montoMinimo, listaPrecioId, orden);

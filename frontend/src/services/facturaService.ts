@@ -8,7 +8,7 @@ import {
   TipoComprobanteDTO
 } from '../models/factura.dto';
 import { PageResponse } from '../types/page';
-import { ListaPrecioArticuloDTO } from '../types/listaPrecioArticulo';
+import { BusquedaProductosDTO, ListaPrecioArticuloDTO } from '../types/listaPrecioArticulo';
 import { authFetch, urlConToken } from './authService';
 
 const API_BASE_URL = 'http://localhost:8080/api/facturas';
@@ -259,11 +259,26 @@ export class FacturaService {
     return urlConToken(`${API_BASE_URL}/export/txt?${paramsFiltros(filtros).toString()}`);
   }
 
-  static async listarArticulosPorLista(listaPrecioId: number): Promise<ListaPrecioArticuloDTO[]> {
-    const res = await authFetch(`http://localhost:8080/api/lista-precio-articulos?listaPrecioId=${listaPrecioId}`);
-    if (!res.ok) {
-      throw new Error('Error al obtener los productos de la lista de precios');
-    }
+  /**
+   * Explorador de productos paginado en el backend (LIMIT / OFFSET): solo viaja la página pedida.
+   * Filtros: lista de precios, rubro (exacto), código y denominación (contienen, sin importar tildes).
+   */
+  static async buscarProductos(filtros: BusquedaProductosDTO): Promise<PageResponse<ListaPrecioArticuloDTO>> {
+    const params = new URLSearchParams({ pagina: String(filtros.pagina), tamanio: String(filtros.tamanio) });
+    params.append('listaPrecioId', String(filtros.listaPrecioId));
+    if (filtros.rubro) params.append('rubro', filtros.rubro);
+    if (filtros.codigo?.trim()) params.append('codigo', filtros.codigo.trim());
+    if (filtros.denominacion?.trim()) params.append('denominacion', filtros.denominacion.trim());
+
+    const res = await authFetch(`${API_URL}/catalogos/productos?${params.toString()}`);
+    if (!res.ok) throw await leerError(res, 'Error al obtener los productos de la lista de precios');
+    return res.json();
+  }
+
+  /** Rubros que tienen productos en la lista (para el combo del explorador) */
+  static async listarRubros(listaPrecioId: number): Promise<string[]> {
+    const res = await authFetch(`${API_URL}/catalogos/rubros?listaPrecioId=${listaPrecioId}`);
+    if (!res.ok) return [];
     return res.json();
   }
 

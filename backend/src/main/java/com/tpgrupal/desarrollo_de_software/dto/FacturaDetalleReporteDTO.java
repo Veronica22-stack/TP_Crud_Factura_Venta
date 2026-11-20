@@ -18,6 +18,7 @@ public class FacturaDetalleReporteDTO {
     private double precioUnitario;
     private double subtotal;
     private String codigo;
+    private String rubro;
     private double porcentajeBonificacion;
     private double importeNeto;
     private double importeIva;

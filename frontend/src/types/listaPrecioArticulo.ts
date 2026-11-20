@@ -12,4 +12,16 @@ export interface ListaPrecioArticuloDTO {
   rubro: string;
   precioVenta: number;
   listaPrecioNombre: string;
+  listaPrecioId?: number;
+  marca?: string | null;
+}
+
+// Filtros del explorador de productos (GET /api/catalogos/productos)
+export interface BusquedaProductosDTO {
+  listaPrecioId: number;
+  rubro?: string;
+  codigo?: string;
+  denominacion?: string;
+  pagina: number;
+  tamanio: number;
 }

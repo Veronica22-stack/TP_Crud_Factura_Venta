@@ -527,6 +527,14 @@ body {
   border-color: var(--acento);
 }
 
+/* Barra de paginación dentro de los exploradores (productos y clientes) */
+.pagination-bar-modal {
+  padding: 12px 0 0;
+  background-color: transparent;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 /* ---------- Modales (Explorar) ---------- */
 .modal-overlay {
   position: fixed;
@@ -935,3 +943,12 @@ body {
 .header-acciones { display: flex; gap: 8px; align-items: center; }
 .rechazo-texto { font-size: 0.75rem; color: #b91c1c; max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .iva-resumen { text-align: right; color: #475569; font-size: 0.9rem; margin-top: 8px; }
+
+/* Tipo de comprobante: siempre Factura C, se muestra fijo y sin la flecha del desplegable */
+#tipoComprobanteSelect {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: none;
+  cursor: default;
+}

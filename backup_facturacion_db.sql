@@ -78,7 +78,7 @@ CREATE TABLE `cliente` (
   `fecha_alta` datetime(6) NOT NULL,
   `fecha_baja` datetime(6) DEFAULT NULL,
   `fecha_modificacion` datetime(6) DEFAULT NULL,
-  `cut_cuil` varchar(255) COLLATE utf8mb4_general_ci NOT NULL,
+  `cuit_cuil` varchar(255) COLLATE utf8mb4_general_ci NOT NULL,
   `denominacion` varchar(255) COLLATE utf8mb4_general_ci NOT NULL,
   `usuario_baja_id` bigint DEFAULT NULL,
   `usuario_carga_id` bigint NOT NULL,

@@ -13,6 +13,8 @@ import com.tpgrupal.desarrollo_de_software.service.AfipFacturaService.Comprobant
 import com.tpgrupal.desarrollo_de_software.service.AfipFacturaService.EstadoServidores;
 import com.tpgrupal.desarrollo_de_software.service.AfipFacturaService.MonedaRemota;
 import com.tpgrupal.desarrollo_de_software.util.AfipHttpUtil;
+import com.tpgrupal.desarrollo_de_software.util.RutaCredencial;
+import jakarta.annotation.PostConstruct;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.slf4j.Logger;
@@ -91,6 +93,24 @@ public class FacturacionAfipService {
 
     public FacturacionAfipService(TipoMonedaRepository tipoMonedaRepository) {
         this.tipoMonedaRepository = tipoMonedaRepository;
+    }
+
+    // Las rutas de application.properties son relativas: se buscan también en backend/ y en el
+    // classpath, para que el CAE funcione con bootRun, desde el IDE o con el .jar
+    @PostConstruct
+    void resolverRutasCredenciales() {
+        keyPath = RutaCredencial.resolver(keyPath);
+        certPath = RutaCredencial.resolver(certPath);
+        keystorePath = RutaCredencial.resolver(keystorePath);
+        if (modo() == Modo.HOMOLOGACION || modo() == Modo.PRODUCCION) {
+            if (tieneCredenciales()) {
+                log.info("ARCA ({}): credenciales encontradas{}", modo(),
+                        usaKeystore() ? " (keystore)" : " (clave y certificado)");
+            } else {
+                log.warn("ARCA ({}): no se encontraron las credenciales. key={} cert={} keystore={}",
+                        modo(), keyPath, certPath, keystorePath);
+            }
+        }
     }
 
     // ---------------------------------------------------------------------------------------------

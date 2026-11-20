@@ -1,8 +1,6 @@
 package com.tpgrupal.desarrollo_de_software.service;
 
-import com.tpgrupal.desarrollo_de_software.dto.ListaPrecioArticuloDTO;
 import com.tpgrupal.desarrollo_de_software.dto.ListaPrecioDTO;
-import com.tpgrupal.desarrollo_de_software.model.ListaPrecioArticulo;
 import com.tpgrupal.desarrollo_de_software.repository.CondicionIvaRepository;
 import com.tpgrupal.desarrollo_de_software.repository.ListaPrecioArticuloRepository;
 import com.tpgrupal.desarrollo_de_software.repository.ListaPrecioRepository;
@@ -40,21 +38,6 @@ public class ListaPrecioService {
                         .id(lp.getId())
                         .codigo(lp.getCodigo())
                         .denominacion(lp.getDenominacion())
-                        .build())
-                .collect(Collectors.toList());
-    }
-
-    public List<ListaPrecioArticuloDTO> buscarArticulos(String buscar, Long listaPrecioId) {
-        List<ListaPrecioArticulo> items = listaPrecioArticuloRepository.buscarArticulos(buscar, listaPrecioId);
-        return items.stream()
-                .map(item -> ListaPrecioArticuloDTO.builder()
-                        .id(item.getId())
-                        .articuloId(item.getArticulo() != null ? item.getArticulo().getId() : null)
-                        .codigo(item.getArticulo() != null ? item.getArticulo().getCodigo() : "")
-                        .denominacion(item.getArticulo() != null ? item.getArticulo().getDenominacion() : "")
-                        .rubro(item.getArticulo() != null && item.getArticulo().getRubro() != null ? item.getArticulo().getRubro().getDenominacion() : "")
-                        .precioVenta(item.getPrecioVenta())
-                        .listaPrecioNombre(item.getListaPrecio() != null ? item.getListaPrecio().getDenominacion() : "")
                         .build())
                 .collect(Collectors.toList());
     }

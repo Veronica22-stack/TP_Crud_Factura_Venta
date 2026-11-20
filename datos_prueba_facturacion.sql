@@ -55,7 +55,7 @@ CREATE TABLE `cliente` (
   `fecha_alta` datetime(6) NOT NULL,
   `fecha_baja` datetime(6) DEFAULT NULL,
   `fecha_modificacion` datetime(6) DEFAULT NULL,
-  `cut_cuil` varchar(255) NOT NULL,
+  `cuit_cuil` varchar(255) NOT NULL,
   `denominacion` varchar(255) NOT NULL,
   `usuario_baja_id` bigint(20) DEFAULT NULL,
   `usuario_carga_id` bigint(20) NOT NULL,
@@ -348,7 +348,7 @@ INSERT INTO domicilio (id, nombre_calle, numero_calle) VALUES
  (6, 'Las Heras', '456'),
  (7, 'Colón', '990'),
  (8, 'Godoy Cruz', '2040');
-INSERT INTO cliente (id, fecha_alta, fecha_baja, fecha_modificacion, usuario_baja_id, usuario_carga_id, usuario_modificacion_id, cut_cuil, denominacion, contacto_id, domicilio_id) VALUES
+INSERT INTO cliente (id, fecha_alta, fecha_baja, fecha_modificacion, usuario_baja_id, usuario_carga_id, usuario_modificacion_id, cuit_cuil, denominacion, contacto_id, domicilio_id) VALUES
  (1, '2026-01-02 09:00:00', NULL, '2026-01-02 09:00:00', NULL, 1, 1, '00-00000000-0', 'Consumidor Final', 1, 1),
  (2, '2026-01-02 09:00:00', NULL, '2026-01-02 09:00:00', NULL, 1, 1, '27-40876925-9', 'Mayra Muñoz', 2, 2),
  (3, '2026-01-02 09:00:00', NULL, '2026-01-02 09:00:00', NULL, 1, 1, '27-47169997-1', 'Verónica Silva', 3, 3),
@@ -443,6 +443,111 @@ INSERT INTO factura_venta_detalle (id, factura_venta_id, lista_precio_articulo_i
  (19, 11, 4, 'Auriculares HyperX', 1.00, 15500.00, 0.00, 12809.92, 2690.08, 15500.00),
  (20, 12, 7, 'ARROZ', 3.00, 1500.00, 0.00, 3719.01, 780.99, 4500.00),
  (21, 12, 11, 'GASEOSA 2.25L PACK x6', 1.00, 12750.00, 0.00, 10537.19, 2212.81, 12750.00);
+
+-- ---------------------------------------------------------------------
+-- 3b) MÁS PRODUCTOS Y MISMO CATÁLOGO EN TODAS LAS LISTAS DE PRECIOS
+--     (mismo contenido que catalogo_listas_precio.sql)
+-- ---------------------------------------------------------------------
+SET @ahora      := NOW();
+SET @usuario    := (SELECT MIN(id) FROM usuario);
+SET @lista_base := (SELECT MIN(id) FROM lista_precio);
+SET @descuento  := 0.9;   -- precio de las listas que no son la base
+
+-- Ids de las categorías (se buscan por nombre, con o sin tilde)
+SET @rubro_ele := (SELECT id FROM rubro WHERE LOWER(denominacion) LIKE 'electr%'  ORDER BY id LIMIT 1);
+SET @rubro_mue := (SELECT id FROM rubro WHERE LOWER(denominacion) LIKE 'mueble%'  ORDER BY id LIMIT 1);
+SET @rubro_ali := (SELECT id FROM rubro WHERE LOWER(denominacion) LIKE 'aliment%' ORDER BY id LIMIT 1);
+SET @rubro_beb := (SELECT id FROM rubro WHERE LOWER(denominacion) LIKE 'bebida%'  ORDER BY id LIMIT 1);
+
+-- 1) Productos nuevos por categoría ------------------------------------
+DROP TEMPORARY TABLE IF EXISTS nuevos_productos;
+-- Se crea copiando las columnas de articulo y marca para que tenga la misma
+-- intercalación (collation) que las tablas reales y se puedan comparar los textos.
+CREATE TEMPORARY TABLE nuevos_productos
+SELECT a.codigo, a.denominacion, a.rubro_id,
+       m.denominacion AS marca,
+       CAST(0 AS DOUBLE) AS precio      -- precio de la lista base
+FROM articulo a
+LEFT JOIN marca m ON m.id = a.marca_id
+WHERE 1 = 0;
+
+INSERT INTO nuevos_productos (codigo, denominacion, rubro_id, marca, precio) VALUES
+  -- Electrónica
+  ('ART-105', 'Smart TV 50" 4K',                  @rubro_ele, 'Samsung',   720000),
+  ('ART-106', 'Notebook 15.6" 8GB RAM 512GB SSD', @rubro_ele, 'Samsung',   850000),
+  ('ART-107', 'Impresora multifunción WiFi',      @rubro_ele, NULL,        210000),
+  ('ART-108', 'Router WiFi 6 doble banda',        @rubro_ele, NULL,         65000),
+  ('ART-109', 'Auriculares HyperX Cloud II',      @rubro_ele, 'HyperX',     95000),
+  ('ART-110', 'Combo teclado y mouse inalámbrico', @rubro_ele, 'Logitech',  38000),
+  -- Muebles
+  ('ART-150', 'Escritorio de melamina 120 cm',    @rubro_mue, NULL,        140000),
+  ('ART-151', 'Biblioteca 5 estantes',            @rubro_mue, NULL,         95000),
+  ('ART-152', 'Mesa ratona de madera',            @rubro_mue, NULL,         70000),
+  ('ART-153', 'Silla gamer reclinable',           @rubro_mue, NULL,        210000),
+  ('ART-154', 'Cajonera con ruedas 3 cajones',    @rubro_mue, NULL,         65000),
+  ('ART-155', 'Sillón de oficina con apoyabrazos', @rubro_mue, NULL,       160000),
+  -- Alimentos
+  ('ART-203', 'FIDEOS TIRABUZÓN 500g',            @rubro_ali, 'Lucchetti',    650),
+  ('ART-204', 'ARROZ INTEGRAL 1kg',               @rubro_ali, 'Gallo',       1900),
+  ('ART-205', 'HARINA 000 1kg',                   @rubro_ali, NULL,           900),
+  ('ART-206', 'ACEITE DE GIRASOL 1.5L',           @rubro_ali, NULL,          3200),
+  ('ART-207', 'AZÚCAR 1kg',                       @rubro_ali, NULL,          1100),
+  ('ART-208', 'YERBA MATE 1kg',                   @rubro_ali, NULL,          4800),
+  -- Bebidas
+  ('ART-302', 'COCA-COLA ZERO 1.5L',              @rubro_beb, 'Coca-Cola',   2100),
+  ('ART-303', 'AGUA MINERAL 2L',                  @rubro_beb, NULL,          1200),
+  ('ART-304', 'GASEOSA LIMA-LIMÓN 2.25L',         @rubro_beb, NULL,          2300),
+  ('ART-305', 'JUGO DE NARANJA 1L',               @rubro_beb, NULL,          1800),
+  ('ART-306', 'AGUA SABORIZADA 1.5L',             @rubro_beb, NULL,          1500),
+  ('ART-307', 'CERVEZA LATA 473ml',               @rubro_beb, NULL,          1700);
+
+INSERT INTO articulo (fecha_alta, fecha_modificacion, usuario_carga_id, usuario_modificacion_id,
+                      codigo, denominacion, rubro_id, marca_id)
+SELECT @ahora, @ahora, @usuario, @usuario,
+       np.codigo, np.denominacion, np.rubro_id,
+       (SELECT m.id FROM marca m WHERE m.denominacion = np.marca ORDER BY m.id LIMIT 1)
+FROM nuevos_productos np
+WHERE NOT EXISTS (SELECT 1 FROM articulo a WHERE a.codigo = np.codigo);
+
+-- Precio en la lista base (el resto de las listas se completa en el paso 2)
+INSERT INTO lista_precio_articulo (fecha_alta, fecha_modificacion, usuario_carga_id, usuario_modificacion_id,
+                                   lista_precio_id, articulo_id, precio_venta)
+SELECT @ahora, @ahora, @usuario, @usuario, @lista_base, a.id, np.precio
+FROM nuevos_productos np
+JOIN articulo a ON a.codigo = np.codigo
+WHERE NOT EXISTS (SELECT 1 FROM lista_precio_articulo x
+                  WHERE x.articulo_id = a.id AND x.lista_precio_id = @lista_base);
+
+DROP TEMPORARY TABLE IF EXISTS nuevos_productos;
+
+-- 2) Completar: todo artículo con precio en todas las listas -----------
+-- Precio base de cada artículo: el de la lista base o, si no tiene, el de otra lista / 0,9
+DROP TEMPORARY TABLE IF EXISTS precio_base;
+CREATE TEMPORARY TABLE precio_base AS
+SELECT a.id AS articulo_id,
+       COALESCE(
+         (SELECT x.precio_venta FROM lista_precio_articulo x
+           WHERE x.articulo_id = a.id AND x.lista_precio_id = @lista_base
+           ORDER BY x.id LIMIT 1),
+         ROUND((SELECT MIN(x.precio_venta) FROM lista_precio_articulo x
+                 WHERE x.articulo_id = a.id) / @descuento, 0)
+       ) AS precio
+FROM articulo a
+WHERE a.fecha_baja IS NULL;
+
+INSERT INTO lista_precio_articulo (fecha_alta, fecha_modificacion, usuario_carga_id, usuario_modificacion_id,
+                                   lista_precio_id, articulo_id, precio_venta)
+SELECT @ahora, @ahora, @usuario, @usuario,
+       lp.id, pb.articulo_id,
+       ROUND(pb.precio * IF(lp.id = @lista_base, 1, @descuento), 2)
+FROM precio_base pb
+CROSS JOIN lista_precio lp
+WHERE pb.precio IS NOT NULL
+  AND lp.fecha_baja IS NULL
+  AND NOT EXISTS (SELECT 1 FROM lista_precio_articulo x
+                  WHERE x.articulo_id = pb.articulo_id AND x.lista_precio_id = lp.id);
+
+DROP TEMPORARY TABLE IF EXISTS precio_base;
 
 -- ---------------------------------------------------------------------
 -- 4) VERIFICACION RAPIDA (deberia devolver 12 facturas: 10 EMITIDA, 2 ANULADA)
