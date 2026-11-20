@@ -17,7 +17,6 @@ El archivo `backend/src/main/resources/application.properties` ya está incluido
 
 ### 2. Credenciales de ARCA
 Colocar la clave y el certificado en `backend/src/main/resources/afip/` con los nombres de `afip.key.path` y `afip.cert.path`.
-Las rutas relativas se buscan en la carpeta actual, en `backend/` y en el classpath, así que el CAE funciona igual con `gradlew bootRun`, desde el IDE o con el `.jar` de `build/libs`. Al arrancar, el log informa si encontró las credenciales (`ARCA (HOMOLOGACION): credenciales encontradas`).
 Los archivos `.key`, `.crt`, `.pfx`, `.p12` y `ticket-*.properties` están en el `.gitignore`. La Clave Fiscal no está guardada en ningún archivo del proyecto.
 
 ### 3. Backend
@@ -40,7 +39,7 @@ La aplicación web estará disponible en `http://localhost:3000`.
 - Inicio de sesión y registro de usuarios (claves guardadas con BCrypt). Todas las rutas `/api/**` requieren sesión, salvo login y registro.
 - Listado de facturas con filtros por número, cliente, condición de IVA, estado y rango de fechas.
 - Paginación dinámica del listado.
-- Alta de nueva factura con cálculo automático de subtotales y total, filtrando los productos que se pueden agregar según la lista de precio seleccionada.
+- Alta de nueva factura con cálculo automático de subtotales y total, filtrando los productos que se pueden agregar según la lista de precio seleccionada. Seleccionando el cliente que lo realiza, teniendo como opción omitir la especificación del mismo si se trata de un consumidor final
 - Obtención del CAE de ARCA desde el listado.
 - Edición y anulación de facturas existentes.
 - Eliminación de facturas que no tienen CAE.
@@ -65,8 +64,6 @@ La propiedad `afip.modo` de `application.properties` define cómo se pide el CAE
 
 Otras propiedades opcionales: `afip.auto-emitir=true` pide el CAE al guardar la factura (por defecto `false`).
 
-Antes de pedir el CAE se valida que la factura no esté anulada y que la fecha de emisión esté entre 5 días antes y 5 días después de hoy, que es lo que acepta ARCA (si no, responde 409). Al comprobante se le envía la fecha de la factura, el CUIT del cliente (si tiene), la condición de IVA del receptor, la moneda y su cotización. Si ARCA rechaza el comprobante, la factura queda guardada con el motivo. Los errores de configuración o de conexión responden 502. La clave privada puede estar en formato PKCS#8 o PKCS#1.
-
 ## API agregada
 
 | Método | Ruta | Descripción |
@@ -74,9 +71,8 @@ Antes de pedir el CAE se valida que la factura no esté anulada y que la fecha d
 | `GET` | `/api/facturas/resumen` | Totales del panel y últimas facturas (`ultimas`, por defecto 5). |
 | `POST` | `/api/facturas/{id}/emitir` | Pide el CAE (body opcional: `{"tipoComprobante": 11}`). |
 | `GET` | `/api/facturas/export/txt` | Reporte en texto, con los mismos filtros que PDF y Excel. |
-| `GET` | `/api/catalogos/productos` | Explorador de productos paginado con LIMIT/OFFSET (`listaPrecioId`, `rubro`, `codigo`, `denominacion`, `buscar`, `pagina`, `tamanio`). |
-| `GET` | `/api/catalogos/rubros` | Rubros con productos en una lista (`listaPrecioId`), para el combo del explorador. |
-| `GET` | `/api/catalogos/clientes/buscar` | Explorador de clientes paginado con LIMIT/OFFSET (`texto` en razón social o CUIT, o `cuit` y `razonSocial`; `pagina`, `tamanio`). |
+| `GET` | `/api/catalogos/productos` | Buscador de productos paginado (`buscar`, `listaPrecioId`, `pagina`, `tamanio`). |
+| `GET` | `/api/catalogos/clientes/buscar` | Buscador de clientes paginado (`cuit`, `razonSocial`, `pagina`, `tamanio`). |
 | `GET` | `/api/catalogos/monedas` | Monedas (código de ARCA e ISO). |
 | `GET` | `/api/catalogos/tipos-comprobante` | Factura A, B y C. |
 | `GET` | `/api/afip/estado` | Modo, CUIT y credenciales configuradas. |
@@ -87,5 +83,4 @@ El listado de facturas acepta además `clienteId` y busca el texto de `cliente` 
 
 ## Scripts SQL
 - `backup_facturacion_db.sql` y `datos_prueba_facturacion.sql`: estructura y datos de prueba.
-- `catalogo_listas_precio.sql`: agrega productos a cada categoría y completa los precios para que **todas las listas de precios tengan los mismos productos y categorías** (la lista base con el precio base, el resto con 10 % de descuento). No cambia precios existentes y se puede ejecutar más de una vez. Ya está incluido en `datos_prueba_facturacion.sql`.
-- `productos_tecnologia.sql`: agrega las categorías "Informática" y "Celulares y Tablets" (si faltan) y productos de tecnología con precio en todas las listas (se puede ejecutar más de una vez).
+- `productos_tecnologia.sql`: agrega la categoría "Celulares y Tablets" y productos de tecnología con precio en todas las listas (se puede ejecutar más de una vez).
